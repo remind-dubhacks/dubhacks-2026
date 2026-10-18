@@ -54,11 +54,12 @@ def find_side_camera(max_index: int = 4) -> tuple[int | None, dict]:
         cap = cv2.VideoCapture(i)
         if not cap.isOpened():
             continue
-        best = 0
-        for _ in range(12):
+        counts = []
+        for k in range(30):
             ok, f = cap.read()
-            if ok:
-                best = max(best, len(find(f)))
+            if ok and k >= 10:  # skip frames while exposure settles
+                counts.append(len(find(f)))
+        best = sorted(counts)[len(counts) // 2] if counts else 0  # median: steady sightings, not one-off blobs
         cap.release()
         seen[i] = best
     good = {i: n for i, n in seen.items() if n >= 2}

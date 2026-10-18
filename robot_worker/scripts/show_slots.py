@@ -23,7 +23,9 @@ try:
         import cv2, json, os
         from worker.robot import POSES_FILE
         from worker.row_check import find_xy
-        cap = cv2.VideoCapture(int(os.getenv("SIDE_CAMERA_INDEX", "0")))
+        from worker.robot import resolve_cameras
+        resolve_cameras()
+        cap = cv2.VideoCapture(int(os.environ["SIDE_CAMERA_INDEX"]))
         seen = None
         for _ in range(30):
             ok, f = cap.read()
