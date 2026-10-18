@@ -588,6 +588,12 @@ class ReplayExecutor:
                 state = chunk[-1]
         except GuardError as e:
             raise RobotError(e.code, str(e)) from e
+        from .robot import load_poses
+
+        rest = (load_poses().get("poses") or {}).get("rest")
+        if rest:  # fold away before the camera looks, so the arm doesn't hide the row
+            self.robot.move_to(rest, stop, 0.4)
+            time.sleep(0.5)
         side = None
         try:
             _, side, _ = self.robot.observe()
