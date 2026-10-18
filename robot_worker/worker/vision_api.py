@@ -236,6 +236,10 @@ def calibrate_slots(body: CalibrateIn) -> dict:
     xy = find_xy(frame)
     spots = {str(i + 1): [round(xy[o][0], 4), round(xy[o][1], 4)] for i, o in enumerate(body.start)}
     data = load_poses()
+    if data.get("slot4_cal"):  # recorded by scripts/show_slots.py --slot4 (black keyring at slot 4)
+        x4, y4 = data["slot4_cal"]
+        cal["4"] = x4
+        spots["4"] = [x4, y4]
     data["camera_x"] = cal
     data["camera_xy"] = spots
     save_poses(data)

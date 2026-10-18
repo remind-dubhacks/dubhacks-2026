@@ -401,7 +401,8 @@ class ScriptedExecutor:
         for a, b in SHUFFLES[spec["shuffle"]].moves:
             obj = row[a - 1]
             corr = 0.0
-            if cal and slope is not None and a in cal:
+            # Not for the purple block: its image centre doesn't sit at the gripper's centre.
+            if cal and slope is not None and a in cal and obj != "purple":
                 frame = self._frame()
                 found = find(frame) if frame is not None else {}
                 if obj in found:
