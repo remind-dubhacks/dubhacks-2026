@@ -69,6 +69,8 @@ def short_reason(text: str) -> str:
         return "The gripper overloaded. Grip more gently, clear the fault, then resume."
     if "overload" in t:
         return "A motor overloaded. Check nothing is stuck, clear the fault, then resume."
+    if "disk free" in t or "no space left" in t:
+        return "The disk is almost full. Free up space, then resume."
     if "too old" in t or "read failed" in t:
         return "A camera lagged. Check its USB cable, then resume."
     if "missing motor" in t or "not respond" in t:

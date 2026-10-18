@@ -267,7 +267,17 @@ def health() -> dict:
             for arm, key in (("follower", "SO101_PORT"), ("leader", "LEADER_PORT"))}
 
 
+MIN_FREE_GB = float(os.getenv("MIN_FREE_DISK_GB", "1.0"))
+
+
+def require_disk() -> None:
+    free = shutil.disk_usage(DATA_HOME if DATA_HOME.exists() else Path.home()).free / 1e9
+    if free < MIN_FREE_GB:
+        raise HTTPException(507, f"Only {free:.1f} GB disk free; free up space before recording (need {MIN_FREE_GB:.0f}+ GB)")
+
+
 def require_ports() -> None:
+    require_disk()
     for name in ("SO101_PORT", "LEADER_PORT"):
         if not env(name) or not Path(env(name)).exists():
             raise HTTPException(400, f"{name} is not set or not connected ({env(name) or 'empty'})")
@@ -309,6 +319,7 @@ def status() -> dict:
         "live": live.status(),
         "serverVoice": voice.ENABLED,
         "hfUser": env("HF_USER"),
+        "diskFreeGB": round(shutil.disk_usage(Path.home()).free / 1e9, 1),
     }
 
 
@@ -472,6 +483,10 @@ def record_cmd(body: RecordIn) -> tuple[list[str], bool]:
         "--dataset.push_to_hub=false",
         "--dataset.no_stamp=true",  # LeRobot 0.6 otherwise makes a new timestamped folder per run, breaking resume
         f"--dataset.root={root}",  # LeRobot 0.6 requires an explicit root to resume (append to) a dataset
+        # Encode video while recording instead of writing every frame as a PNG first: a 50 s
+        # two-camera episode otherwise needs gigabytes of temporary images and can fill the disk.
+        "--dataset.streaming_encoding=true",
+        "--dataset.encoder_threads=2",
         f"--display_data={'true' if body.rerun else 'false'}",
         *(display_args() if body.rerun else []),
         f"--play_sounds={'true' if body.sounds else 'false'}",
