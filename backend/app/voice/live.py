@@ -1,13 +1,16 @@
 """Live voice relay: continuous, interruptible speech-to-speech with tool calling.
 
-Browser <-> this server <-> Backboard Realtime -> Gemini Live (or Gemini Live directly; see VOICE_TRANSPORT and
-voice/upstreams.py). The server holds the API keys and runs the tools; the model never touches the robot directly.
+Browser <-> this server <-> Backboard Realtime -> Gemini Live. (Gemini Live directly is switched off during
+development, see transport() and connect_upstream(); the code stays in voice/upstreams.py.) The server holds the
+API keys and runs the tools; the model never touches the robot directly.
 Browser sends PCM16 mono 16 kHz; replies are PCM16 (24 kHz unless the provider says otherwise).
 Docs: https://ai.google.dev/gemini-api/docs/live, https://docs.backboard.io
 
-Long-term memory: each patient has their own Backboard assistant. Through Backboard, memory="Readonly" retrieves
-facts during the call; directly to Gemini, they are read once into the prompt. Either way, new facts are saved
-after the call (memory.digest_session), never mid-conversation, so remembering adds no delay to a reply.
+Long-term memory: each patient has their own Backboard assistant, resolved once at the start of a call
+(memory.ensure_assistant) and used for everything in that call, so nothing is read from or saved to anyone else's.
+What is remembered goes into the prompt at the start (and Backboard's memory="Readonly" may retrieve more). New
+facts are saved in the background, never delaying a reply: when the model calls the remember tool, and after the
+call (memory.digest_session) for anything it missed.
 """
 import asyncio
 import json
@@ -19,6 +22,7 @@ from datetime import datetime, timezone
 from fastapi import WebSocket
 
 from ..config import settings
+from ..tasks import background
 from . import memory
 from .agent import GEMINI_DECLS, STOP_RE
 from .prompts.voice_system_prompt import VOICE_SYSTEM_PROMPT, render_profile
@@ -50,11 +54,14 @@ GAME_NAMES = {"faces": "famous faces", "proverbs": "sayings", "sounds": "sounds"
 
 
 def transport() -> str:
-    """backboard | gemini. VOICE_TRANSPORT wins; otherwise Backboard whenever its key is set."""
-    t = settings.voice_transport.strip().lower()
-    if t in ("backboard", "gemini"):
-        return t
-    return "backboard" if settings.backboard_api_key else "gemini"
+    """Always backboard during development. With direct Gemini back on: backboard | gemini, VOICE_TRANSPORT wins,
+    otherwise Backboard whenever its key is set."""
+    # DEV: Backboard only. Un-comment to allow VOICE_TRANSPORT=gemini and direct Gemini without a Backboard key.
+    # t = settings.voice_transport.strip().lower()
+    # if t in ("backboard", "gemini"):
+    #     return t
+    # return "backboard" if settings.backboard_api_key else "gemini"
+    return "backboard"
 
 
 def available() -> bool:
@@ -127,32 +134,41 @@ def should_remind(user_turns: int, last_reminded_turn: int, recent_words: list[i
     return periodic or wordy
 
 
+def can_remember(participant: dict) -> bool:
+    return bool(participant.get("consentFlags", {}).get("rememberPreferences"))
+
+
 async def open_upstream(ws: WebSocket, name: str, games: list[str], participant: dict):
-    """Pick the transport and build its setup. Backboard: make sure the patient has an assistant (one per patient,
-    created on their first session) and let memory="Readonly" handle recall. Gemini: read memories once.
-    Saving happens after the call, in run()."""
+    """Pick the transport and build its setup. Backboard: resolve this patient's own assistant (created on their
+    first session) and put what it remembers in the prompt; memory="Readonly" may retrieve more. Gemini: read
+    memories once. The upstream's assistant_id is the only one run() uses for this call."""
     profile = participant.get("careProfile") or {}
-    assistant_id = participant.get("backboardAssistantId")
-    can_remember = participant.get("consentFlags", {}).get("rememberPreferences", False)
     if transport() == "backboard":
-        if can_remember and not assistant_id:
+        assistant_id = None
+        if can_remember(participant):
             assistant_id = await memory.ensure_assistant(ws.app.state.store, participant, with_seed=False)
-            if assistant_id:
-                background(memory.seed(assistant_id, profile))
+        memories = await memory.recall(assistant_id)
+        log.info("call for %s: assistant %s, %d memories in the prompt", participant.get("_id") or name, assistant_id, len(memories))
         mode = "Readonly" if assistant_id else "off"
-        return BackboardUpstream(backboard_setup(name, games, assistant_id=assistant_id, memory_mode=mode, profile=profile))
+        up = BackboardUpstream(backboard_setup(name, games, assistant_id=assistant_id, memory_mode=mode, profile=profile,
+                                               memories=memories))
+        up.assistant_id, up.memories = assistant_id, memories
+        return up
     return await gemini_upstream(name, games, participant)
 
 
 async def gemini_upstream(name: str, games: list[str], participant: dict) -> GeminiUpstream:
     profile = participant.get("careProfile") or {}
-    memories = await memory.recall(participant.get("backboardAssistantId"), " ".join(profile.get("interests", [])))
-    return GeminiUpstream(build_setup(name, games, profile=profile, memories=memories))
+    assistant_id = participant.get("backboardAssistantId") if can_remember(participant) else None
+    memories = await memory.recall(assistant_id, " ".join(profile.get("interests", [])))
+    up = GeminiUpstream(build_setup(name, games, profile=profile, memories=memories))
+    up.assistant_id, up.memories = assistant_id, memories
+    return up
 
 
 async def connect_upstream(ws: WebSocket, name: str, games: list[str], participant: dict):
-    """Connected upstream, or None after telling the browser why. If Backboard refuses (e.g. no credits for
-    realtime audio) and a Gemini key is set, the session carries on directly with Gemini instead."""
+    """Connected upstream, or None after telling the browser why (e.g. Backboard refused: no credits for realtime
+    audio). With the Gemini fallback back on, a refused Backboard session carries on directly with Gemini."""
     up = await open_upstream(ws, name, games, participant)
     try:
         await up.connect()
@@ -160,14 +176,15 @@ async def connect_upstream(ws: WebSocket, name: str, games: list[str], participa
     except Exception as e:  # noqa: BLE001
         log.warning("could not reach %s: %r", up.label, e)
         error = f"Could not reach {up.label}: {e}"[:300]
-    if isinstance(up, BackboardUpstream) and settings.gemini_api_key:
-        log.warning("falling back to Gemini Live directly (no new memories this session)")
-        up = await gemini_upstream(name, games, participant)
-        try:
-            await up.connect()
-            return up
-        except Exception as e:  # noqa: BLE001
-            error = f"Could not reach {up.label}: {type(e).__name__}"
+    # DEV: Backboard only. Un-comment to fall back to Gemini Live directly when Backboard refuses.
+    # if isinstance(up, BackboardUpstream) and settings.gemini_api_key:
+    #     log.warning("falling back to Gemini Live directly")
+    #     up = await gemini_upstream(name, games, participant)
+    #     try:
+    #         await up.connect()
+    #         return up
+    #     except Exception as e:
+    #         error = f"Could not reach {up.label}: {type(e).__name__}"
     await ws.send_json({"type": "error", "message": error})
     await ws.close()
     return None
@@ -195,13 +212,28 @@ async def run(ws: WebSocket) -> None:
     user_turns = last_reminded_turn = 0
     recent_words: list[int] = []  # output word counts of recent model turns, for the brevity reminder
     said: list[str] = []  # the person's finished turns, for memory.digest_session; never stored
+    remembered: list[str] = []  # facts saved during the call with the remember tool
 
     up = await connect_upstream(ws, name, games, participant)
     if up is None:
         return
+    assistant_id = getattr(up, "assistant_id", None)  # this patient's own memory; fixed for the whole call
+
+    def remember(fact: str) -> dict:
+        fact = fact.strip()[:300]
+        if not fact:
+            return {"ok": False, "error": "No fact given."}
+        if not assistant_id:
+            return {"ok": False, "error": "Memories are not kept for this person."}
+        if memory.is_known(fact, up.memories + remembered, name):
+            return {"ok": True, "note": "Already remembered."}
+        remembered.append(fact)
+        background(memory.add(assistant_id, fact, kind="session"))
+        log.info("remember for %s -> assistant %s: %r", participant.get("_id"), assistant_id, fact[:80])
+        return {"ok": True}
 
     async def tool(name: str, args: dict) -> dict:
-        res = await run_tool(state, name, args, None)
+        res = remember(str(args.get("fact", ""))) if name == "remember" else await run_tool(state, name, args, None)
         await ws.send_json({"type": "tool", "name": name, "args": args, "result": res, "state": state.view()})
         return res
 
@@ -315,8 +347,11 @@ async def run(ws: WebSocket) -> None:
             said.append(user_buf.strip())
         await save_record(ws, state, started_at, participant.get("_id"))
         background(close_quietly(up))  # Backboard's stop handshake can take a moment; don't hold the handler
-        if participant.get("consentFlags", {}).get("rememberPreferences"):
-            background(memory.digest_session(participant.get("backboardAssistantId"), name, said))
+        if assistant_id:
+            background(memory.digest_session(assistant_id, name, said, remembered))
+        else:
+            log.info("not saving memories: %s", "no resident picked" if not participant
+                     else "no consent to remember" if not can_remember(participant) else "Backboard assistant unavailable")
 
 
 async def close_quietly(up) -> None:
@@ -324,16 +359,6 @@ async def close_quietly(up) -> None:
         await up.close()
     except Exception as e:  # noqa: BLE001
         log.warning("closing %s: %r", up.label, e)
-
-
-_background: set[asyncio.Task] = set()
-
-
-def background(coro) -> None:
-    """Fire-and-forget (memory seeding), keeping a reference so the task is not garbage-collected mid-flight."""
-    task = asyncio.create_task(coro)
-    _background.add(task)
-    task.add_done_callback(_background.discard)
 
 
 async def load_participant(ws: WebSocket) -> dict:
