@@ -28,7 +28,7 @@ Each shuffle is recorded **12 times**, 60 episodes in total, in batches of 4 tha
 
 ## Each episode (the Mac voice tells you)
 
-1. **"Episode N of 4. Go."** You have 50 seconds. Do the moves in the table, then rest the arm.
+1. **"Episode N of 4. Go."** You have 35 seconds. Do the moves in the table, then rest the arm.
 2. **"Five seconds."** Finish up.
 3. **"Reset the objects."** You have 15 seconds. Put the keyrings back in the **START** position by hand, with slot 4 empty.
 4. **"Get ready."** The next episode starts.
