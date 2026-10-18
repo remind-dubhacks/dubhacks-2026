@@ -24,8 +24,6 @@
   --key-off: linear-gradient(180deg, #d9dcd6 0%, #b9beb6 100%);
   --primary: linear-gradient(180deg, #4c8a68 0%, #2f6248 100%);
   --icon-off: #5e655f;
-  --grille: #59605b;
-  --power-led: #6ee7a0;
 
   position: fixed;
   inset: 0;
@@ -132,22 +130,30 @@
   letter-spacing: -0.01em;
   text-shadow: 0 1px 0 rgba(255, 255, 255, 0.8);
 }
-.face-lights { display: flex; align-items: center; gap: 18px; flex-shrink: 0; }
-.grille { display: grid; grid-template-columns: repeat(3, 6px); gap: 5px; }
-.grille span {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--grille);
-  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.6), 0 1px 0 #fff;
+.calm-setup .nurse-link {
+  flex-shrink: 0;
+  padding: calc(8 * var(--u)) calc(18 * var(--u));
+  border-radius: calc(14 * var(--u));
+  font-size: max(14px, calc(17 * var(--u)));
+  font-weight: 600;
+  color: var(--ink-label);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.6);
+  background: var(--key-off);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8), inset 0 -2px 0 rgba(0, 0, 0, 0.1), 0 2px 3px rgba(30, 43, 38, 0.3);
 }
-.led {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--power-led);
-  box-shadow: 0 0 10px rgba(110, 231, 160, 0.9), 0 0 2px rgba(110, 231, 160, 1);
+.calm-setup .nurse-link:active { transform: translateY(1px); }
+
+/* Password gate for the nurse page, over the setup card. */
+.nurse-gate {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  padding: 16px;
+  overflow-y: auto;
+  background: rgba(30, 43, 38, 0.35);
 }
+.calm-setup .nurse-gate .face { max-width: calc(420 * var(--u)); display: flex; }
+.nurse-gate h2 { margin: 0; font-size: max(20px, calc(26 * var(--u))); font-weight: 600; line-height: 1.2; }
 
 .calm-setup .field {
   display: flex;

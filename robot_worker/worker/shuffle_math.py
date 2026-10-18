@@ -46,7 +46,8 @@ def allowlist() -> dict[tuple[str, str], dict]:
 # Poses: home, above_s1..above_s4, down_s1..down_s4 (teach with: scripts/arm.py teach ...).
 import os as _os  # noqa: E402
 
-GRIP_OPEN = float(_os.getenv("SCRIPT_GRIP_OPEN", "38"))  # the demos open to ~36-40
+# Wider than the demos (~36-40): a keyring that shifted ~1 cm on release at slot 4 was still missed at 38.
+GRIP_OPEN = float(_os.getenv("SCRIPT_GRIP_OPEN", "55"))
 GRIP_CLOSE = float(_os.getenv("SCRIPT_GRIP_CLOSE", "12"))
 GRIP_RELEASE = float(_os.getenv("SCRIPT_GRIP_RELEASE", "26"))  # just past holding (~20): lets go without a flick  # demos closed to ~8; a bit gentler to spare the gripper motor
 SCRIPT_POSES = ["home"] + [f"above_s{i}" for i in range(1, SLOTS + 1)] + [f"down_s{i}" for i in range(1, SLOTS + 1)]

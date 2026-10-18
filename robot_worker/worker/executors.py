@@ -125,6 +125,26 @@ class PerceptronExecutor:
         self.last_check: dict | None = None
         self.hand_pauses = 0
 
+    def _finish_scripted(self, spec: dict, ai_check: dict, stop: threading.Event) -> bool:
+        """Hybrid: the AI policy tried first. If the camera sees all three keyrings but not in the
+        expected order, finish the job with the one scripted shuffle that turns what is on the table
+        into the expected row. Returns True when that worked. Never runs when the camera can't see
+        all three (a keyring may be in the gripper or in slot 4)."""
+        from .shuffle_math import shuffle_for
+
+        observed = ai_check.get("observed")
+        if os.getenv("HYBRID_SCRIPTED", "1") != "1" or not observed or not all(observed):
+            return False
+        if ScriptedExecutor.missing_poses():
+            return False
+        sid = shuffle_for(list(observed), list(ai_check["expected"]))
+        if sid is None:
+            return False
+        fb = ScriptedExecutor(robot=self.robot)
+        fb.execute({**spec, "shuffle": sid, "start": list(observed)}, stop)
+        self.last_check = {**(fb.last_check or {}), "mode": "ai+scripted", "aiCheck": ai_check, "scriptedShuffle": sid}
+        return True
+
     GRANT_TTL_S = int(os.getenv("PERCEPTRON_SESSION_TTL_S", "3600"))
 
     def _get_grant(self):
@@ -224,7 +244,9 @@ class PerceptronExecutor:
                 raise RobotError("object_still_held", "time ran out with a keyring still in the gripper")
             check = shuffle_check(spec, side) or {}
             extra = {"grasp": monitor.summary(), "guard": guard_total, "handPauses": self.hand_pauses}
-            self.last_check = {**check, **extra}
+            self.last_check = {**check, **extra, "mode": "ai"}
+            if check and check.get("verdict") != "ok" and self._finish_scripted(spec, check, stop):
+                return
             if check.get("verdict") == "mismatch":
                 raise RobotError("shuffle_mismatch", f"expected {check['expected']}, saw {check['observed']}")
         except Stopped:
@@ -300,6 +322,16 @@ class ScriptedExecutor:
             return cv2.imdecode(np.frombuffer(side, np.uint8), cv2.IMREAD_COLOR) if side else None
         except Exception:  # noqa: BLE001
             return None
+
+    @staticmethod
+    def _search_offsets(data: dict, slot: int) -> list[float]:
+        """Where to feel for a missed keyring: inside the middle 50% of the pans the human demos
+        grasped at for this slot (poses.json demo_ranges), else the fixed PICK_SEARCH_DEG list."""
+        iqr = ((data.get("demo_ranges") or {}).get(str(slot)) or {}).get("iqr", {}).get("shoulder_pan.pos")
+        if not iqr:
+            return SEARCH_OFFSETS_DEG
+        h = round(max(1.0, (iqr[1] - iqr[0]) / 2), 2)
+        return [0.0, h, -h, 2 * h, -2 * h]
 
     def _holding(self) -> bool:
         """The follower's gripper reading tells a keyring from nothing: ~19-23 on a keycap, ~11 empty."""
@@ -385,7 +417,7 @@ class ScriptedExecutor:
                 # little to each side (the camera can't see slot 4, where keyrings shift on release).
                 # Lift between tries so a miss never drags the keyring; stop before placing if all fail.
                 found = False
-                for off in SEARCH_OFFSETS_DEG:
+                for off in self._search_offsets(data, a):
                     grip(GRIP_OPEN, 0.2)
                     move(above)
                     a2 = {**above, "shoulder_pan.pos": above["shoulder_pan.pos"] + off}
