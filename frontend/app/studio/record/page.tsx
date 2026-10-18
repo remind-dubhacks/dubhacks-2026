@@ -36,6 +36,17 @@ function phaseOf(c: CampaignStatus | null, s: StudioStatus | null): Phase {
   }
 }
 
+/** "Swap LEFT and RIGHT: a to slot 4, b to slot 1, a to slot 3. Start: slot 1 x, ... End: slot 1 y, ..." */
+function parsePlan(variation?: string) {
+  if (!variation) return null;
+  const [beforeEnd, endPart = ""] = variation.split(" End: ");
+  const [movePart, startPart = ""] = beforeEnd.split(" Start: ");
+  const idx = movePart.indexOf(": ");
+  const title = idx > 0 ? movePart.slice(0, idx) : movePart;
+  const clean = (t: string) => t.replace(/\.\s*$/, "").split(/, then |, /).map((x) => x.trim()).filter(Boolean);
+  return { title, steps: clean(idx > 0 ? movePart.slice(idx + 2) : ""), lineup: clean(startPart), end: clean(endPart) };
+}
+
 export default function RecordPage() {
   const [status, setStatus] = useState<StudioStatus | null>(null);
   const [campaign, setCampaign] = useState<CampaignStatus | null>(null);
@@ -101,9 +112,38 @@ export default function RecordPage() {
       <div className={`rec-phase ${phase.tone}`}>
         <div className="rec-label">{phase.label}</div>
         {left !== null && <div className="rec-count">{left}</div>}
+        {phase.tone === "go" && <div className="rec-hint">Done with the moves? Rest the arm and wait. It saves automatically.</div>}
+        {phase.tone === "reset" && <div className="rec-hint">Put the keyrings back to START. Nothing to press.</div>}
       </div>
 
-      <p className="rec-msg">{campaign?.message || "Open the full Studio to set up a recording campaign."}</p>
+      {(() => {
+        const plan = parsePlan(campaign?.current?.variation);
+        if (!plan) return <p className="rec-msg">{campaign?.message || "Open the full Studio to set up a recording campaign."}</p>;
+        const resetting = phase.tone === "reset";
+        return (
+          <div className="rec-steps">
+            <div className="rec-steps-title">{plan.title}</div>
+            {plan.steps.length > 0 && (
+              <ol className={resetting ? "dim" : ""}>
+                {plan.steps.map((st, i) => <li key={i}>{st}</li>)}
+              </ol>
+            )}
+            {plan.lineup.length > 0 && (
+              <div className={`rec-lineup ${resetting || phase.tone === "wait" ? "focus" : ""}`}>
+                <span className="rec-lineup-label">{phase.tone === "reset" ? "Reset to START:" : "START:"}</span>
+                {plan.lineup.map((x, i) => <span key={i} className="badge">{x}</span>)}
+              </div>
+            )}
+            {plan.end.length > 0 && (
+              <div className={`rec-lineup end ${phase.tone === "go" ? "focus" : ""}`}>
+                <span className="rec-lineup-label">END:</span>
+                {plan.end.map((x, i) => <span key={i} className="badge">{x}</span>)}
+              </div>
+            )}
+            {(phase.tone === "stop" || phase.key === "break" || phase.key === "done") && <p className="rec-msg">{campaign?.message}</p>}
+          </div>
+        );
+      })()}
       {err && <p className="warn">{err}</p>}
 
       <div className="rec-buttons">
@@ -118,7 +158,18 @@ export default function RecordPage() {
             catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
           }}>Clear gripper fault</button>
         )}
-        <button className="stop huge" onClick={() => { claimVoice(true); studio.stop().catch(() => {}); if (campaign?.running) studio.campaignAction("pause").catch(() => {}); }}>Stop</button>
+        <button
+          className="stop huge"
+          onClick={() => {
+            const recordingNow = phase.tone === "go" || phase.tone === "reset";
+            if (recordingNow && !confirm("Emergency stop?\n\nThis DISCARDS the episode in progress. Episodes end and save automatically; you never need Stop to finish one.")) return;
+            claimVoice(true);
+            studio.stop().catch(() => {});
+            if (campaign?.running) studio.campaignAction("pause").catch(() => {});
+          }}
+        >
+          {phase.tone === "go" || phase.tone === "reset" ? "Emergency stop (discards episode)" : "Stop"}
+        </button>
       </div>
 
       <StudioVoice
