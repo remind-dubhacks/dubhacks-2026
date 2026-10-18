@@ -8,11 +8,16 @@ import { voiceReset, voiceTurn, type ToolCall, type VoiceState } from "@/lib/voi
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const SR: any = typeof window !== "undefined" ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition : null;
 
+type Msg = { role: "you" | "ai"; text: string; tools?: string[]; at: number };
+const GREETING = "Hello, I'm ReMind. Would you like to play a game? You can just say, play the ordering game.";
+const HISTORY_KEY = "remind.voice.history";
+
 export default function Voice() {
   const [sid] = useState(() => `s-${Math.random().toString(36).slice(2, 8)}`);
   const [listening, setListening] = useState(false);
   const [heard, setHeard] = useState("");
-  const [reply, setReply] = useState("Press the microphone and say: “Let's play the ordering game.”");
+  const [started, setStarted] = useState(false);
+  const [log, setLog] = useState<Msg[]>([]);
   const [state, setState] = useState<VoiceState | null>(null);
   const [calls, setCalls] = useState<ToolCall[]>([]);
   const [table, setTable] = useState<string[]>([]);
@@ -21,6 +26,7 @@ export default function Voice() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [hasSR, setHasSR] = useState(true);
+  const endRef = useRef<HTMLDivElement>(null);
 
   const recRef = useRef<any>(null);
   const listeningRef = useRef(false);
@@ -28,6 +34,14 @@ export default function Voice() {
   const tableRef = useRef<string[]>([]);
   const lastShuffle = useRef(0);
   tableRef.current = table;
+
+  useEffect(() => {
+    try { setLog(JSON.parse(localStorage.getItem(HISTORY_KEY) ?? "[]")); } catch { /* ignore */ }
+  }, []);
+  useEffect(() => {
+    try { localStorage.setItem(HISTORY_KEY, JSON.stringify(log.slice(-100))); } catch { /* ignore */ }
+    endRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [log]);
 
   const startRec = useCallback(() => {
     try { if (listeningRef.current && !speakingRef.current) recRef.current?.start(); } catch { /* already started */ }
@@ -46,10 +60,12 @@ export default function Voice() {
 
   const send = useCallback(async (text: string) => {
     if (!text.trim()) return;
-    setHeard(text); setBusy(true); setErr(null);
+    setHeard(""); setBusy(true); setErr(null);
+    setLog((l) => [...l, { role: "you", text: text.trim(), at: Date.now() }]);
     try {
       const r = await voiceTurn(sid, text, tableRef.current);
-      setReply(r.reply); setCalls(r.toolCalls); setState(r.state);
+      setCalls(r.toolCalls); setState(r.state);
+      setLog((l) => [...l, { role: "ai", text: r.reply, tools: r.toolCalls.map((c) => c.name), at: Date.now() }]);
       if (r.state.shuffleId !== lastShuffle.current) {
         lastShuffle.current = r.state.shuffleId;
         setTable(r.state.shuffledOrder);
@@ -84,13 +100,18 @@ export default function Voice() {
     return () => { listeningRef.current = false; try { rec.stop(); } catch { /* */ } };
   }, [send, startRec]);
 
-  function toggleMic() {
-    if (listening) {
-      listeningRef.current = false; setListening(false);
-      try { recRef.current?.stop(); } catch { /* */ }
-      return;
-    }
-    listeningRef.current = true; setListening(true); startRec();
+  function startConversation() {
+    setStarted(true);
+    listeningRef.current = true; setListening(true);
+    setLog((l) => [...l, { role: "ai", text: GREETING, at: Date.now() }]);
+    speak(GREETING); // recognition starts when the greeting finishes
+  }
+
+  function endConversation() {
+    listeningRef.current = false; setListening(false); setStarted(false);
+    try { recRef.current?.stop(); } catch { /* */ }
+    window.speechSynthesis?.cancel();
+    send("stop");
   }
 
   function swap(i: number) {
@@ -101,54 +122,67 @@ export default function Voice() {
   }
 
   const awaiting = state?.phase === "awaiting";
+  const gameOn = state && state.target.length > 0 && state.phase !== "stopped";
   return (
-    <main className="play">
-      <p className="small">Voice prototype · {hasSR ? "microphone ready" : "this browser has no speech recognition (use Chrome); typing works"}</p>
+    <main className="play voice">
+      <h1>ReMind</h1>
+      <p className="small">{hasSR ? "Talk to the assistant; it talks back." : "This browser has no speech recognition (use Chrome); typing works."}</p>
 
-      <p className="prompt" aria-live="polite">{reply}</p>
+      {!started ? (
+        <button className="primary big start" onClick={startConversation} disabled={!hasSR}>🎙️ Start conversation</button>
+      ) : (
+        <div className="row">
+          <span className={`badge ${listening && !busy ? "on live-dot" : ""}`}>{busy ? "Thinking…" : "Listening…"}</span>
+          <button className="stop" onClick={endConversation}>Stop</button>
+        </div>
+      )}
+      {heard && <p className="heard">“{heard}”</p>}
 
-      <div className="controls">
-        <button className={`big mic ${listening ? "on" : "primary"}`} onClick={toggleMic} disabled={!hasSR}>
-          {listening ? "🎙️ Listening… (tap to stop)" : "🎙️ Tap to talk"}
-        </button>
-        <button className="stop big" onClick={() => send("stop")}>Stop</button>
-      </div>
-      <p className="heard">{heard ? <>You: “{heard}”</> : " "}{busy && " …thinking"}</p>
-
-      {state && state.target.length > 0 && state.phase !== "stopped" && (
-        <>
-          <section className="target card">
-            <p className="small">Put them in this order</p>
-            <div className="itemrow">{state.target.map((id, i) => <ItemCard key={id} id={id} index={i} />)}</div>
-          </section>
+      {gameOn && (
+        <section className="card gamebox">
+          <p className="small">Put them in this order</p>
+          <div className="itemrow">{state!.target.map((id, i) => <ItemCard key={id} id={id} index={i} />)}</div>
           <p className="tries">
-            {Array.from({ length: MAX_TRIALS }, (_, i) => <span key={i} className={`dot ${i < state.attempt ? "used" : ""}`} />)}
+            {Array.from({ length: MAX_TRIALS }, (_, i) => <span key={i} className={`dot ${i < state!.attempt ? "used" : ""}`} />)}
           </p>
           <details className="demo" open={awaiting}>
-            <summary>Demo table (stands in for the real table and camera)</summary>
-            <p className="small">Tap two items to swap them, then say “I'm done”.</p>
+            <summary>Demo table (stands in for the real table and camera): tap two to swap, then say “done”</summary>
             <div className="itemrow">
               {table.map((id, i) => <ItemCard key={i} id={id} index={i} selected={pick === i} onClick={() => swap(i)} />)}
             </div>
           </details>
-        </>
+        </section>
       )}
 
-      <form className="row" style={{ marginTop: 24 }} onSubmit={(e) => { e.preventDefault(); send(typed); setTyped(""); }}>
+      <h2>Conversation</h2>
+      <div className="chat" aria-live="polite">
+        {log.length === 0 && <p className="small">Nothing yet. Press Start conversation.</p>}
+        {log.map((m, i) => (
+          <div key={i} className={`bubble ${m.role}`}>
+            <span className="who">{m.role === "you" ? "You" : "ReMind"}</span>
+            <p>{m.text}</p>
+            {m.tools && m.tools.length > 0 && <p className="chips">{m.tools.map((t, j) => <span key={j} className="chip">🔧 {t}</span>)}</p>}
+          </div>
+        ))}
+        <div ref={endRef} />
+      </div>
+
+      <form className="row" style={{ marginTop: 16 }} onSubmit={(e) => { e.preventDefault(); send(typed); setTyped(""); }}>
         <input aria-label="Type instead" placeholder="Or type what you'd say…" value={typed} onChange={(e) => setTyped(e.target.value)}
           style={{ flex: 1, font: "inherit", padding: 14, borderRadius: 16, border: "2px solid var(--border)" }} />
         <button type="submit">Send</button>
       </form>
 
-      <details className="demo" open>
-        <summary>What the AI did (tool calls)</summary>
-        {calls.length === 0 ? <p className="small">No tools called yet.</p> : calls.map((c, i) => (
+      {state?.helpRequested && <p className="warn">⚠️ Caregiver alerted: {state.alerts.join("; ")}</p>}
+      <details className="demo">
+        <summary>Last tool calls (debug)</summary>
+        {calls.length === 0 ? <p className="small">None yet.</p> : calls.map((c, i) => (
           <pre key={i} className="tool">{c.name}({JSON.stringify(c.args)}) → {JSON.stringify(c.result)}</pre>
         ))}
-        {state?.helpRequested && <p className="warn">⚠️ Caregiver alerted: {state.alerts.join("; ")}</p>}
       </details>
-
-      <p className="status"><button className="linkbtn" onClick={async () => { await voiceReset(sid); location.reload(); }}>Reset</button></p>
+      <p className="status">
+        <button className="linkbtn" onClick={async () => { await voiceReset(sid); try { localStorage.removeItem(HISTORY_KEY); } catch { /* */ } location.reload(); }}>Clear history &amp; reset</button>
+      </p>
       {err && <p className="status warn">{err}</p>}
     </main>
   );
