@@ -23,6 +23,9 @@ RANGES: dict[str, list[tuple[tuple[int, int, int], tuple[int, int, int]]]] = {
 }
 MIN_AREA = 250  # pixels at 640 px wide
 UNION = {"purple"}
+SHAPED = {"black", "white"}  # keycaps: compact, roughly square blobs
+MAX_AREA = int(os.getenv("KEYRING_MAX_AREA", "9000"))  # px at 640 wide (a keycap is ~1500-4000)
+TOP_IGNORE = float(os.getenv("ROW_TOP_IGNORE", "0.09"))
 MIRRORED = os.getenv("SIDE_CAMERA_MIRRORED", "1") == "1"
 
 
@@ -51,7 +54,19 @@ def _find(frame_bgr: np.ndarray) -> dict[str, tuple[float, int, float]]:
         n, _, stats, cents = cv2.connectedComponentsWithStats(m)
         if n <= 1:
             continue
-        best = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
+        H = img.shape[0]
+        # Keyring-shaped blobs only: not too big, roughly square, not along the top edge (robot base,
+        # cables and the arm itself are dark too).
+        ok = [i for i in range(1, n)
+              if stats[i, cv2.CC_STAT_AREA] <= MAX_AREA
+              and 0.4 <= stats[i, cv2.CC_STAT_WIDTH] / max(1, stats[i, cv2.CC_STAT_HEIGHT]) <= 2.5
+              and cents[i][1] >= TOP_IGNORE * H
+              # solid like a keycap, not a thin cable loop
+              and stats[i, cv2.CC_STAT_AREA] >= 0.45 * stats[i, cv2.CC_STAT_WIDTH] * stats[i, cv2.CC_STAT_HEIGHT]
+              ] if name in SHAPED else list(range(1, n))
+        if not ok:
+            continue
+        best = max(ok, key=lambda i: stats[i, cv2.CC_STAT_AREA])
         area = int(stats[best, cv2.CC_STAT_AREA])
         if area < MIN_AREA:
             continue
