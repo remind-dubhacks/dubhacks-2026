@@ -361,7 +361,8 @@ def test_executor_confirms_a_correct_shuffle(limits):
     assert ex.last_check["guard"]["chunks"] >= 1
 
 
-def test_executor_fails_a_wrong_shuffle(limits):
+def test_executor_fails_a_wrong_shuffle(limits, monkeypatch):
+    monkeypatch.setenv("HYBRID_SCRIPTED", "0")  # AI only
     ex = make_exec(limits, [[middle(limits)] * 30] * 50, png("ep00_end.jpg"))
     with pytest.raises(executors.RobotError) as e:
         ex.execute({"instruction": SHUFFLES["swap_lm"].instruction, "shuffle": "swap_lm"}, executors.threading.Event())
@@ -679,7 +680,7 @@ def test_spot_check_names_the_keyring_and_the_direction():
     ref = {1: (0.757, 0.30), 2: (0.438, 0.30), 3: (0.104, 0.40)}
     ok = slot_locate.spot_problems({"black": (0.75, 0.31), "white": (0.44, 0.29), "purple": (0.10, 0.41)}, ["black", "white", "purple", None], ref)
     assert ok == []
-    bad = slot_locate.spot_problems({"black": (0.66, 0.40), "white": (0.44, 0.29), "purple": (0.10, 0.41)}, ["black", "white", "purple", None], ref)
+    bad = slot_locate.spot_problems({"black": (0.60, 0.40), "white": (0.44, 0.29), "purple": (0.10, 0.41)}, ["black", "white", "purple", None], ref)
     assert len(bad) == 1 and bad[0]["object"] == "black"
     assert "sang trái" in bad[0]["sayVi"]
 
@@ -700,3 +701,34 @@ def test_spot_check_knows_each_keyrings_shape():
 def test_demo_can_limit_the_robot_to_verified_shuffles(monkeypatch):
     monkeypatch.setenv("ROBOT_SHUFFLES", "swap_lr,swap_lm")
     assert set(shuffle_math.allowlist()) == {("shuffle", "swap_lr"), ("shuffle", "swap_lm")}
+
+
+
+# ---------------------------------------------------------------- hybrid: AI first, scripted finishes
+
+
+def test_ai_that_left_the_row_unchanged_is_finished_by_the_script(limits, monkeypatch):
+    taught(monkeypatch)
+    # Camera: start row unchanged after the AI (ep00_start shows black, white, purple)
+    ex = make_exec(limits, [[middle(limits)] * 30] * 50, png("ep00_start.jpg"))
+    ex.robot = FakeArm(middle(limits), png("ep00_start.jpg"))
+    ran = {}
+
+    def fake_scripted(self, spec, stop):
+        ran.update(spec)
+        self.last_check = {"verdict": "ok", "mode": "scripted"}
+
+    monkeypatch.setattr(executors.ScriptedExecutor, "execute", fake_scripted)
+    ex.execute({"instruction": "x", "shuffle": "swap_lr"}, executors.threading.Event())
+    assert ex.last_check["mode"] == "ai+scripted"
+    assert ran["shuffle"] == "swap_lr" and ran["start"] == ["black", "white", "purple"]
+    assert ex.last_check["aiCheck"]["verdict"] == "mismatch"
+
+
+def test_hybrid_never_guesses_when_the_camera_cannot_see_all_three(limits, monkeypatch):
+    taught(monkeypatch)
+    ex = make_exec(limits, [[middle(limits)] * 30] * 50, png("ep05_end.jpg"))  # purple out of view
+    ex.robot = FakeArm(middle(limits), png("ep05_end.jpg"))
+    monkeypatch.setattr(executors.ScriptedExecutor, "execute", lambda *a: pytest.fail("must not run"))
+    ex.execute({"instruction": "x", "shuffle": "swap_lr"}, executors.threading.Event())
+    assert ex.last_check["verdict"] == "unsure" and ex.last_check["mode"] == "ai"

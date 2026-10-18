@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import os
 
-MAX_CORRECTION_DEG = float(os.getenv("PICK_MAX_CORRECTION_DEG", "3"))
+MAX_CORRECTION_DEG = float(os.getenv("PICK_MAX_CORRECTION_DEG", "6"))  # 1.3-3 deg corrections all picked fine
 # A keyring cut off by the image edge has a biased centre: no correction there (first arm test:
 # the purple block at x~0.10 read 6 deg off and the pick missed).
 EDGE = float(os.getenv("PICK_EDGE_MARGIN", "0.08"))
@@ -54,7 +54,7 @@ def load_calibration(poses_data: dict) -> dict[int, float]:
 # The open gripper (~4 cm) takes a keycap (~2 cm) up to ~1.5 cm off centre: 0.05 of the image width.
 # A pick missed at 0.07 off. The long purple block's centre varies more with how it is set down.
 # With camera pick correction on (up to 3 deg, ~0.055 of the width) only bigger offsets need a nudge.
-TOL_X = float(os.getenv("SPOT_TOL_X", "0.07"))
+TOL_X = float(os.getenv("SPOT_TOL_X", "0.13"))  # beyond the 6 deg the pick correction can cover
 # Off by default: the slots sit at different depths in the side view, so a keyring's image height
 # depends on the slot as well as its shape, and robot-placed keyrings were flagged. 1.0 = no y check.
 TOL_Y = float(os.getenv("SPOT_TOL_Y", "1.0"))

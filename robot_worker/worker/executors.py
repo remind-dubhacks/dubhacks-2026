@@ -125,6 +125,26 @@ class PerceptronExecutor:
         self.last_check: dict | None = None
         self.hand_pauses = 0
 
+    def _finish_scripted(self, spec: dict, ai_check: dict, stop: threading.Event) -> bool:
+        """Hybrid: the AI policy tried first. If the camera sees all three keyrings but not in the
+        expected order, finish the job with the one scripted shuffle that turns what is on the table
+        into the expected row. Returns True when that worked. Never runs when the camera can't see
+        all three (a keyring may be in the gripper or in slot 4)."""
+        from .shuffle_math import shuffle_for
+
+        observed = ai_check.get("observed")
+        if os.getenv("HYBRID_SCRIPTED", "1") != "1" or not observed or not all(observed):
+            return False
+        if ScriptedExecutor.missing_poses():
+            return False
+        sid = shuffle_for(list(observed), list(ai_check["expected"]))
+        if sid is None:
+            return False
+        fb = ScriptedExecutor(robot=self.robot)
+        fb.execute({**spec, "shuffle": sid, "start": list(observed)}, stop)
+        self.last_check = {**(fb.last_check or {}), "mode": "ai+scripted", "aiCheck": ai_check, "scriptedShuffle": sid}
+        return True
+
     GRANT_TTL_S = int(os.getenv("PERCEPTRON_SESSION_TTL_S", "3600"))
 
     def _get_grant(self):
@@ -224,7 +244,9 @@ class PerceptronExecutor:
                 raise RobotError("object_still_held", "time ran out with a keyring still in the gripper")
             check = shuffle_check(spec, side) or {}
             extra = {"grasp": monitor.summary(), "guard": guard_total, "handPauses": self.hand_pauses}
-            self.last_check = {**check, **extra}
+            self.last_check = {**check, **extra, "mode": "ai"}
+            if check and check.get("verdict") != "ok" and self._finish_scripted(spec, check, stop):
+                return
             if check.get("verdict") == "mismatch":
                 raise RobotError("shuffle_mismatch", f"expected {check['expected']}, saw {check['observed']}")
         except Stopped:
