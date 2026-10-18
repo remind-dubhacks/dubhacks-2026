@@ -39,7 +39,7 @@ class Config(BaseModel):
     breakSeconds: int = Field(20, ge=0, le=600)
     visionCheck: bool = True
     autoUpload: bool = True
-    autoTrain: bool = True
+    autoTrain: bool = False  # Perceptron allows only 2 successful training jobs per team: train deliberately
     trainSteps: int = Field(1000, ge=100, le=10000)  # API max is 10,000
     targets: list[Target]
 

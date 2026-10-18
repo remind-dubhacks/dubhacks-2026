@@ -141,7 +141,7 @@ export default function CampaignPanel({ status, hfUser, onError }: { status: Cam
           <div className="row small" style={{ marginTop: 8 }}>
             <label style={{ flexDirection: "row" }}><input type="checkbox" checked={plan.visionCheck} onChange={(e) => upd({ visionCheck: e.target.checked })} /> Camera check before each batch (teach the objects first)</label>
             <label style={{ flexDirection: "row" }}><input type="checkbox" checked={plan.autoUpload} onChange={(e) => upd({ autoUpload: e.target.checked })} /> Auto-upload when done</label>
-            <label style={{ flexDirection: "row" }}><input type="checkbox" checked={plan.autoTrain} onChange={(e) => upd({ autoTrain: e.target.checked })} /> Auto-train after upload</label>
+            <label style={{ flexDirection: "row" }}><input type="checkbox" checked={plan.autoTrain} onChange={(e) => upd({ autoTrain: e.target.checked })} /> Auto-train after upload (uses 1 of the team's 2 training jobs)</label>
           </div>
 
           <table className="table" style={{ marginTop: 12 }}>
