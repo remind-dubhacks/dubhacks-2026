@@ -14,6 +14,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+if "auto" in (os.getenv("SIDE_CAMERA_INDEX"), os.getenv("WRIST_CAMERA_INDEX")):
+    from .robot import resolve_cameras  # noqa: E402
+
+    resolve_cameras()  # macOS reorders cameras: pick the side camera by what it sees
 
 from . import campaign, studio, vision_api  # noqa: E402
 from .shuffle_math import allowlist as shuffle_allowlist  # noqa: E402

@@ -42,14 +42,47 @@ def _png(frame) -> bytes:
     return buf.getvalue()
 
 
+def find_side_camera(max_index: int = 4) -> tuple[int | None, dict]:
+    """macOS reorders cameras between launches, so find the side camera by what it sees: the one
+    that shows the most keyrings. Returns (index or None, {index: keyrings seen})."""
+    import cv2
+
+    from .row_check import find
+
+    seen: dict[int, int] = {}
+    for i in range(max_index):
+        cap = cv2.VideoCapture(i)
+        if not cap.isOpened():
+            continue
+        best = 0
+        for _ in range(12):
+            ok, f = cap.read()
+            if ok:
+                best = max(best, len(find(f)))
+        cap.release()
+        seen[i] = best
+    good = {i: n for i, n in seen.items() if n >= 2}
+    return (max(good, key=good.get) if good else None), seen
+
+
 def camera_config() -> dict:
     from lerobot.cameras.opencv.configuration_opencv import OpenCVCameraConfig
 
     cam = lambda idx: OpenCVCameraConfig(index_or_path=idx, width=640, height=480, fps=30)  # noqa: E731
-    return {
-        "side": cam(int(os.getenv("SIDE_CAMERA_INDEX", "0"))),
-        "wrist": cam(int(os.getenv("WRIST_CAMERA_INDEX", "1"))),
-    }
+    resolve_cameras()
+    return {"side": cam(int(os.environ["SIDE_CAMERA_INDEX"])), "wrist": cam(int(os.environ["WRIST_CAMERA_INDEX"]))}
+
+
+def resolve_cameras() -> None:
+    """Turn SIDE/WRIST_CAMERA_INDEX=auto into real indices once, for every module that reads them."""
+    side_env, wrist_env = os.getenv("SIDE_CAMERA_INDEX", "0"), os.getenv("WRIST_CAMERA_INDEX", "1")
+    if side_env == "auto":
+        found, seen = find_side_camera()
+        print(f"[cameras] keyrings seen per index: {seen} -> side camera = {found}", flush=True)
+        side_env = str(found if found is not None else 0)
+    if wrist_env == "auto":  # the other of the two USB cameras
+        wrist_env = "1" if side_env == "0" else "0"
+    os.environ["SIDE_CAMERA_INDEX"], os.environ["WRIST_CAMERA_INDEX"] = side_env, wrist_env
 
 
 class SO101:
