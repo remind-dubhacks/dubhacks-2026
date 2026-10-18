@@ -535,7 +535,7 @@ def test_perceptron_refusal_falls_back_to_scripted_shuffle(limits, monkeypatch):
     assert ex.last_check["mode"] == "scripted-fallback"
     assert "deployment_recovering" in ex.last_check["policyError"]
     grips = [v for k, v in ex.robot.path if k == "grip"]
-    assert grips.count(shuffle_math.GRIP_CLOSE) == 3  # three pick-and-places for a swap
+    assert sum(v < 15 for v in grips) == 3  # three pick-and-places for a swap
 
 
 def test_no_fallback_without_taught_poses(limits, monkeypatch):
@@ -650,7 +650,7 @@ def test_missed_pick_is_retried_once(monkeypatch):
     taught(monkeypatch)
     ex = executors.ScriptedExecutor(robot=GripArm([False, True, True, True]))
     ex.execute({"instruction": "x", "shuffle": "swap_lr"}, executors.threading.Event())
-    assert [v for k, v in ex.robot.path if k == "grip"].count(shuffle_math.GRIP_CLOSE) == 4
+    assert sum(v < 15 for k, v in ex.robot.path if k == "grip") == 4
 
 
 def test_missed_pick_searches_to_the_side_until_the_gripper_holds(monkeypatch):
@@ -739,3 +739,15 @@ def test_search_follows_the_demo_grasp_spread():
     data = {"demo_ranges": {"4": {"iqr": {"shoulder_pan.pos": [31.7, 34.7]}}}}
     assert executors.ScriptedExecutor._search_offsets(data, 4) == [0.0, 1.5, -1.5, 3.0, -3.0]
     assert executors.ScriptedExecutor._search_offsets({}, 4) == executors.SEARCH_OFFSETS_DEG
+
+
+
+def test_pick_correction_knows_the_purple_blocks_offset():
+    # keycaps on slots 1, 2, 4 define x(pan); the purple block on slot 3 sits 0.05 left of a keycap
+    pans = {1: -13.0, 2: -1.0, 3: 15.0, 4: 30.0}
+    x_of = lambda pan: 0.80 - 0.012 * (pan + 13)  # noqa: E731
+    ref = {1: x_of(-13), 2: x_of(-1), 3: x_of(15) - 0.05, 4: x_of(30)}
+    # purple seen exactly where purple belongs on slot 1: no correction
+    assert slot_locate.pick_correction(x_of(-13) - 0.05, 1, "purple", ref, pans) == 0.0
+    # a keycap seen 0.024 to the right of slot 2's spot = 2 deg toward slot 1
+    assert abs(slot_locate.pick_correction(x_of(-1) + 0.024, 2, "white", ref, pans) - (-2.0)) < 1e-6

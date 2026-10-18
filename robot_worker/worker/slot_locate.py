@@ -122,3 +122,37 @@ def spot_problems(found_xy: dict[str, tuple[float, float]], row: list[str | None
 
 def load_spots(poses_data: dict) -> dict[int, tuple[float, float]]:
     return {int(k): (float(v[0]), float(v[1])) for k, v in (poses_data.get("camera_xy") or {}).items()}
+
+
+# ---------------------------------------------------------------- per-keyring pick correction
+
+CAL_OBJECTS = {1: "black", 2: "white", 3: "purple", 4: "black"}  # what sat on each slot at calibration
+
+
+def pick_correction(x_seen: float, slot: int, obj: str, ref_x: dict[int, float], pans: dict[int, float],
+                    cal_objects: dict[int, str] = CAL_OBJECTS) -> float:
+    """Degrees of shoulder_pan to add so the gripper lines up with `obj` as the camera sees it.
+
+    Fits image x against the taught pans using only slots calibrated with a keycap (their centre is
+    the gripper's centre), then estimates how far the purple block's image centre sits from a
+    keycap's on the same spot. The expected x for `obj` on `slot` is the slot's keycap x plus that
+    object's offset; the correction turns the remaining gap into degrees, capped and skipped near
+    the image edge."""
+    caps = [s for s in ref_x if cal_objects.get(s) in ("black", "white") and s in pans]
+    if len(caps) < 2 or slot not in ref_x or slot not in pans:
+        return 0.0
+    if not (EDGE <= x_seen <= 1 - EDGE):
+        return 0.0
+    slope, icpt = fit({s: pans[s] for s in caps}, {s: ref_x[s] for s in caps})  # x = slope * pan + icpt
+    if slope == 0:
+        return 0.0
+    offs = {"black": 0.0, "white": 0.0}
+    for s, o in cal_objects.items():
+        if o not in offs and s in ref_x and s in pans:
+            offs[o] = ref_x[s] - (slope * pans[s] + icpt)
+    keycap_x = ref_x[slot] - offs.get(cal_objects.get(slot, "black"), 0.0)
+    dx = x_seen - (keycap_x + offs.get(obj, 0.0))
+    if abs(dx) < MIN_SHIFT:
+        return 0.0
+    c = dx / slope  # degrees of pan per unit of image x
+    return max(-MAX_CORRECTION_DEG, min(MAX_CORRECTION_DEG, c))

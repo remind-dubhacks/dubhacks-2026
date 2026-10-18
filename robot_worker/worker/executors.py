@@ -10,6 +10,9 @@ from .motion_guard import ActionGuard, GraspMonitor, GuardError
 from .robot import Stopped
 
 DEFAULT_START = ["black", "white", "purple"]  # docs/RECORDING_SETUP.md
+# The purple switch block is wider and slicker than a keycap: squeeze it a little harder.
+GRIP_CLOSE_BY_OBJECT = {"purple": float(os.getenv("SCRIPT_GRIP_CLOSE_PURPLE", "6"))}
+TRAVEL_LIFT_DEG = float(os.getenv("SCRIPT_TRAVEL_LIFT_DEG", "15"))  # extra height when crossing between slots
 # Retry offsets (deg of shoulder_pan) when a pick misses: same spot, then a little to each side.
 SEARCH_OFFSETS_DEG = [float(x) for x in os.getenv("PICK_SEARCH_DEG", "0,2.5,-2.5,5,-5").split(",")]
 HANDS_EVERY = int(os.getenv("HANDS_CHECK_EVERY_N_ACTIONS", "6"))  # ~5 checks a second at 30 fps
@@ -349,7 +352,7 @@ class ScriptedExecutor:
         from .robot import GRIPPER, load_poses
         from .row_check import find, find_xy, read_row
         from .shuffle_math import GRIP_CLOSE, GRIP_OPEN, GRIP_RELEASE, SHUFFLES
-        from .slot_locate import fit, load_calibration, load_spots, pan_correction, spot_problems
+        from .slot_locate import load_calibration, load_spots, pick_correction, spot_problems
 
         data = load_poses()
         # Taught poses carry whatever the gripper was doing while teaching; the script opens and
@@ -360,12 +363,7 @@ class ScriptedExecutor:
         # sits at the image edge, slot 4 is out of view). Turn on once the camera sees all 4 slots.
         use_cam_picks = camera and os.getenv("PICK_CAMERA_CORRECTION", "0") == "1"
         cal = load_calibration(data) if use_cam_picks else {}
-        slope = None
-        if cal:
-            try:
-                slope, _ = fit(cal, {s: poses[f"down_s{s}"]["shoulder_pan.pos"] for s in cal})
-            except ValueError:
-                cal = {}
+        pans = {s: poses[f"down_s{s}"]["shoulder_pan.pos"] for s in cal if f"down_s{s}" in poses}
         self.corrections: list[dict] = []
 
         if camera:
@@ -395,24 +393,35 @@ class ScriptedExecutor:
             if stop.wait(wait):
                 raise Stopped()
 
+        def high(pose: dict) -> dict:
+            """The same spot, raised: shoulder_lift back by TRAVEL_LIFT_DEG (smaller lift = higher)."""
+            if "shoulder_lift.pos" not in pose:
+                return pose
+            return {**pose, "shoulder_lift.pos": pose["shoulder_lift.pos"] - TRAVEL_LIFT_DEG}
+
+        last_high: dict | None = None
         row: list[str | None] = [*start, None]
         move(poses["home"])
         grip(GRIP_OPEN, 0.2)
         for a, b in SHUFFLES[spec["shuffle"]].moves:
             obj = row[a - 1]
             corr = 0.0
-            # Not for the purple block: its image centre doesn't sit at the gripper's centre.
-            if cal and slope is not None and a in cal and obj != "purple":
+            if cal and a in cal:
                 frame = self._frame()
                 found = find(frame) if frame is not None else {}
                 if obj in found:
-                    corr = pan_correction(found[obj][0], a, cal, slope)
+                    # Expected image x for THIS keyring on this slot (the purple block's centre sits
+                    # off the gripper's centre; slot_locate.pick_correction accounts for it).
+                    corr = pick_correction(found[obj][0], a, obj, cal, pans)
                     self.corrections.append({"slot": a, "object": obj, "x": round(found[obj][0], 3), "panDeg": round(corr, 2)})
             above = {**poses[f"above_s{a}"], "shoulder_pan.pos": poses[f"above_s{a}"]["shoulder_pan.pos"] + corr}
             down = {**poses[f"down_s{a}"], "shoulder_pan.pos": poses[f"down_s{a}"]["shoulder_pan.pos"] + corr}
+            if last_high is not None:  # coming from the previous place: stay high until over this slot
+                move(high(above))
+            close = GRIP_CLOSE_BY_OBJECT.get(obj, GRIP_CLOSE)
             move(above)
             move(down)
-            grip(GRIP_CLOSE, 0.4)
+            grip(close, 0.4)
             if not self._holding():
                 # Missed: feel for it. The gripper reading tells holding from empty, so search a
                 # little to each side (the camera can't see slot 4, where keyrings shift on release).
@@ -425,7 +434,7 @@ class ScriptedExecutor:
                     d2 = {**down, "shoulder_pan.pos": down["shoulder_pan.pos"] + off}
                     move(a2)
                     move(d2)
-                    grip(GRIP_CLOSE, 0.4)
+                    grip(close, 0.4)
                     if self._holding():
                         above, found = a2, True
                         self.corrections.append({"slot": a, "object": obj, "searchDeg": off})
@@ -436,9 +445,11 @@ class ScriptedExecutor:
                     move(poses["home"])
                     raise RobotError("grasp_missed", f"could not pick the {obj} from slot {a} (gripper read {getattr(self, '_last_grip', '?')}, holding needs >= 15.5)")
             move(above)
-            # Travel high: a straight joint-space move between two low "above" poses dips toward the
-            # table mid-way and knocked keyrings over in the first arm tests.
-            move(poses["home"])
+            # Travel at height: a straight joint-space move between two low "above" poses dips toward
+            # the table mid-way (it knocked keyrings over), so rise a little, swing across, come down.
+            # Much shorter than going back to home between every pick and place.
+            move(high(above))
+            move(high(poses[f"above_s{b}"]))
             move(poses[f"above_s{b}"])
             move(poses[f"down_s{b}"])
             # Release gently: open just enough to let go, lift, then open fully. Snapping wide open
@@ -446,7 +457,8 @@ class ScriptedExecutor:
             grip(GRIP_RELEASE, 0.4)
             move(poses[f"above_s{b}"])
             grip(GRIP_OPEN, 0.1)
-            move(poses["home"])
+            last_high = high(poses[f"above_s{b}"])
+            move(last_high)
             row[b - 1], row[a - 1] = obj, None
         move(poses["home"])
 
