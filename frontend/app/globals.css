@@ -1,0 +1,64 @@
+:root {
+  --bg: #fbf7f1;
+  --surface: #ffffff;
+  --text: #1f1b16;
+  --muted: #5c554c;
+  --accent: #2f6b4f;
+  --accent-text: #ffffff;
+  --border: #d9d1c5;
+  --warn: #8a4b00;
+  --stop: #b3261e;
+  --radius: 20px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 20px;
+  line-height: 1.5;
+}
+
+main { max-width: 960px; margin: 0 auto; padding: 32px 16px; }
+
+h1 { font-size: 2rem; margin: 0 0 8px; }
+h2 { font-size: 1.3rem; margin: 24px 0 8px; }
+
+a { color: var(--accent); }
+
+button {
+  font: inherit;
+  border-radius: var(--radius);
+  border: 2px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  padding: 14px 24px;
+  cursor: pointer;
+  min-height: 56px;
+}
+button:focus-visible { outline: 4px solid var(--accent); outline-offset: 3px; }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+button.stop { background: var(--stop); border-color: var(--stop); color: #fff; }
+
+.card { background: var(--surface); border: 2px solid var(--border); border-radius: var(--radius); padding: 20px; }
+
+/* Participant screen */
+.prompt { font-size: 2.2rem; line-height: 1.3; margin: 16px 0 32px; min-height: 3em; }
+.choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 24px; }
+.choice { font-size: 2.4rem; font-weight: 600; min-height: 200px; }
+.controls { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 32px; }
+.controls button { font-size: 1.4rem; flex: 1 1 140px; }
+.status { margin-top: 24px; font-size: 1.3rem; color: var(--muted); }
+.status strong { color: var(--text); }
+
+/* Caregiver screen */
+.row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+.small { font-size: 16px; color: var(--muted); }
+.badge { display: inline-block; padding: 2px 12px; border-radius: 999px; background: #ece5da; font-size: 16px; }
+.warn { color: var(--warn); }
+select { font: inherit; padding: 10px; border-radius: 12px; border: 2px solid var(--border); background: var(--surface); color: var(--text); }

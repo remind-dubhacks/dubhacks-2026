@@ -6,7 +6,7 @@
 # Env & secrets
 .env
 .env.*
-!.env.example
+!*.example
 
 # Dependencies & builds
 node_modules/
@@ -17,3 +17,4 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+*.tsbuildinfo
