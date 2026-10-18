@@ -61,7 +61,7 @@
       "shoulder_pan.pos": 32.3,
       "shoulder_lift.pos": -1.27,
       "elbow_flex.pos": -3.25,
-      "wrist_flex.pos": 75.74,
+      "wrist_flex.pos": 76.12,
       "wrist_roll.pos": 97.19,
       "gripper.pos": 32.59
     },
@@ -69,7 +69,7 @@
       "shoulder_pan.pos": 33.27000045776367,
       "shoulder_lift.pos": 27.209999084472656,
       "elbow_flex.pos": -3.430000066757202,
-      "wrist_flex.pos": 67.73999786376953,
+      "wrist_flex.pos": 76.12,
       "wrist_roll.pos": 97.0999984741211,
       "gripper.pos": 32.59
     },
@@ -251,9 +251,5 @@
         ]
       }
     }
-  },
-  "slot4_cal": [
-    0.2855,
-    0.3199
-  ]
+  }
 }
