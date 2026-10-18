@@ -669,7 +669,7 @@ def test_spot_check_names_the_keyring_and_the_direction():
     assert ok == []
     bad = slot_locate.spot_problems({"black": (0.66, 0.40), "white": (0.44, 0.29), "purple": (0.10, 0.41)}, ["black", "white", "purple", None], ref)
     assert len(bad) == 1 and bad[0]["object"] == "black"
-    assert "sang trái" in bad[0]["sayVi"] and "lại gần robot" in bad[0]["sayVi"]
+    assert "sang trái" in bad[0]["sayVi"]
 
 
 def test_find_xy_on_a_real_frame():

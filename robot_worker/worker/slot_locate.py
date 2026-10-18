@@ -55,7 +55,9 @@ def load_calibration(poses_data: dict) -> dict[int, float]:
 # A pick missed at 0.07 off. The long purple block's centre varies more with how it is set down.
 # With camera pick correction on (up to 3 deg, ~0.055 of the width) only bigger offsets need a nudge.
 TOL_X = float(os.getenv("SPOT_TOL_X", "0.07"))
-TOL_Y = float(os.getenv("SPOT_TOL_Y", "0.08"))
+# Off by default: the slots sit at different depths in the side view, so a keyring's image height
+# depends on the slot as well as its shape, and robot-placed keyrings were flagged. 1.0 = no y check.
+TOL_Y = float(os.getenv("SPOT_TOL_Y", "1.0"))
 LOOSER = {"purple": 1.5}
 NAMES_VI = {"black": "đen", "white": "trắng", "purple": "tím"}
 

@@ -10,12 +10,12 @@
       "gripper.pos": 37.98
     },
     "above_s1": {
-      "shoulder_pan.pos": -13.05,
-      "shoulder_lift.pos": -0.01,
-      "elbow_flex.pos": 5.23,
-      "wrist_flex.pos": 74.24,
-      "wrist_roll.pos": 78.46,
-      "gripper.pos": 22.18
+      "shoulder_pan.pos": -14.99,
+      "shoulder_lift.pos": -37.19,
+      "elbow_flex.pos": 16.62,
+      "wrist_flex.pos": 71.52,
+      "wrist_roll.pos": 88.04,
+      "gripper.pos": 37.62
     },
     "down_s1": {
       "shoulder_pan.pos": -13.05,
@@ -26,12 +26,12 @@
       "gripper.pos": 22.18
     },
     "above_s2": {
-      "shoulder_pan.pos": -1.1,
-      "shoulder_lift.pos": -5.28,
-      "elbow_flex.pos": 13.4,
-      "wrist_flex.pos": 72.04,
-      "wrist_roll.pos": 87.78,
-      "gripper.pos": 23.82
+      "shoulder_pan.pos": 2.33,
+      "shoulder_lift.pos": -45.71,
+      "elbow_flex.pos": 15.65,
+      "wrist_flex.pos": 71.6,
+      "wrist_roll.pos": 96.4,
+      "gripper.pos": 37.62
     },
     "down_s2": {
       "shoulder_pan.pos": -1.1,
@@ -127,22 +127,22 @@
     ]
   },
   "camera_x": {
-    "1": 0.8627,
-    "2": 0.6166,
-    "3": 0.3446
+    "1": 0.8178,
+    "2": 0.5351,
+    "3": 0.2033
   },
   "camera_xy": {
     "1": [
-      0.8627,
-      0.1972
+      0.8178,
+      0.2174
     ],
     "2": [
-      0.6166,
-      0.2048
+      0.5351,
+      0.2199
     ],
     "3": [
-      0.3446,
-      0.4367
+      0.2033,
+      0.3117
     ]
   }
 }
