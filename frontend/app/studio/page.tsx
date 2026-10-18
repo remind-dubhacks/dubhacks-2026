@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import StudioVoice from "./StudioVoice";
 import VisionPanel from "./VisionPanel";
-import { studio, workerUrl, type ArmStatus, type Dataset, type MotorHealth, type StudioStatus, type UploadState } from "@/lib/studio";
+import CampaignPanel from "./CampaignPanel";
+import { studio, workerUrl, type ArmStatus, type CampaignStatus, type Dataset, type MotorHealth, type StudioStatus, type UploadState } from "@/lib/studio";
 
 const MIN_EPISODES = 50; // Perceptron mentors: ~50 demonstrations is the practical minimum
 
@@ -54,6 +55,7 @@ export default function Studio() {
   const [remote, setRemote] = useState<Record<string, unknown> | null>(null);
   const [datasetId, setDatasetId] = useState("");
   const [steps, setSteps] = useState(1000);
+  const [campaign, setCampaign] = useState<CampaignStatus | null>(null);
   const [health, setHealth] = useState<Awaited<ReturnType<typeof studio.health>> | null>(null);
   const [jobs, setJobs] = useState<Record<string, unknown>[]>([]);
   const [deployments, setDeployments] = useState<Record<string, unknown>[]>([]);
@@ -76,6 +78,7 @@ export default function Studio() {
         if (!alive) return;
         setStatus(s);
         setOffline(false);
+        studio.campaign().then(setCampaign, () => {});
         const l = await studio.logs(lastSeq.current);
         if (l.lines.length) {
           lastSeq.current = l.last;
@@ -150,6 +153,7 @@ export default function Studio() {
         datasets={datasets}
         uploads={uploads}
         rec={rec}
+        campaign={campaign}
         actions={{
           teleop: async () => { setPreviews(false); await studio.teleop(true); },
           record: async () => { setPreviews(false); await studio.record({ ...rec, sounds: false }); },
@@ -239,8 +243,10 @@ export default function Studio() {
         </div>
       </section>
 
+      <CampaignPanel status={campaign} hfUser={status?.hfUser ?? ""} onError={setErr} />
+
       <section>
-        <h2>3. Record episodes</h2>
+        <h2>3. Record episodes (manual)</h2>
         <p className="small">
           Each episode: do the whole task with the leader, then reset the scene during the reset time. Aim for {MIN_EPISODES}+ episodes, varying object position a little.
           Recording into an existing dataset name adds to it.

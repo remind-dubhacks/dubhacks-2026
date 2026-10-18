@@ -57,6 +57,38 @@ export type Remembered = {
   score: number;
 };
 
+export type CampaignTarget = { id: string; task: string; object: string; target: number; variations: string[]; done: number };
+
+export type CampaignConfig = {
+  repo: string;
+  batchSize: number;
+  episodeSeconds: number;
+  resetSeconds: number;
+  breakSeconds: number;
+  visionCheck: boolean;
+  autoUpload: boolean;
+  autoTrain: boolean;
+  trainSteps: number;
+  targets: Omit<CampaignTarget, "done">[];
+};
+
+export type CampaignStatus = {
+  state: string;
+  running: boolean;
+  paused: boolean;
+  message: string;
+  messageSeq: number;
+  current: { targetId: string; task: string; object: string; episodes: number; batch: number; variation: string } | null;
+  config: CampaignConfig;
+  targets: CampaignTarget[];
+  totalDone: number;
+  totalTarget: number;
+  datasetEpisodes: number;
+  datasetId: string | null;
+  jobId: string | null;
+  history: { t: number; state: string; message: string }[];
+};
+
 export type UploadState = { phase: string; done: number; total: number; datasetId?: string; error?: string };
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
@@ -90,6 +122,9 @@ export const studio = {
     post<{ resume: boolean }>("/studio/record", body),
   stop: () => post("/studio/stop"),
   datasets: () => req<Dataset[]>("/studio/datasets"),
+  campaign: () => req<CampaignStatus>("/studio/campaign"),
+  campaignConfig: (cfg: CampaignConfig) => req<CampaignStatus>("/studio/campaign/config", { method: "PUT", body: JSON.stringify(cfg) }),
+  campaignAction: (a: "start" | "ready" | "skip" | "pause" | "stop" | "reset-progress") => post<CampaignStatus>(`/studio/campaign/${a}`),
   visionStreamUrl: (i: number) => `${WORKER}/studio/vision/stream/${i}.mjpg?t=${Date.now()}`,
   detections: (camera: number) => req<{ camera: number; age: number; detections: Detection[] }>(`/studio/vision/detections?camera=${camera}`),
   teach: (camera: number, name: string, bbox?: number[]) => post<{ name: string; color: string | null; examples: number }>("/studio/vision/teach", { camera, name, bbox }),

@@ -15,7 +15,7 @@ from pydantic import BaseModel
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
-from . import studio, vision_api  # noqa: E402
+from . import campaign, studio, vision_api  # noqa: E402
 from .executors import MockExecutor, PerceptronExecutor, RobotError, ScriptedExecutor, Stopped
 
 logging.basicConfig(level=logging.INFO)
@@ -42,6 +42,7 @@ app.add_middleware(
 )
 app.include_router(studio.router)
 app.include_router(vision_api.router)
+app.include_router(campaign.router)
 jobs: dict[str, dict] = {}
 lock = threading.Lock()
 stop_event = threading.Event()

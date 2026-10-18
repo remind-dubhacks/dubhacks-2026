@@ -343,9 +343,7 @@ class RecordIn(BaseModel):
     sounds: bool = True  # LeRobot's own spoken prompts; the Studio voice assistant replaces them
 
 
-@router.post("/record")
-def start_record(body: RecordIn) -> dict:
-    require_ports()
+def record_cmd(body: RecordIn) -> tuple[list[str], bool]:
     if not re.fullmatch(r"[\w.-]+/[\w.-]+", body.repo):
         raise HTTPException(422, "repo must look like user/name")
     resume = (DATA_HOME / body.repo / "meta/info.json").exists()
@@ -364,6 +362,18 @@ def start_record(body: RecordIn) -> dict:
     ]
     if resume:
         cmd.append("--resume=true")
+    return cmd, resume
+
+
+def episode_count(repo: str) -> int:
+    info = DATA_HOME / repo / "meta/info.json"
+    return int(json.loads(info.read_text()).get("total_episodes") or 0) if info.exists() else 0
+
+
+@router.post("/record")
+def start_record(body: RecordIn) -> dict:
+    require_ports()
+    cmd, resume = record_cmd(body)
     proc.start("record", cmd)
     return {**proc.status(), "resume": resume}
 

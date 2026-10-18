@@ -6,7 +6,7 @@
  * - Anything that moves the arm needs a spoken/typed "confirm"; "stop" acts immediately. */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { studio, type Dataset, type MotorHealth, type StudioStatus, type UploadState } from "@/lib/studio";
+import { studio, type CampaignStatus, type Dataset, type MotorHealth, type StudioStatus, type UploadState } from "@/lib/studio";
 
 const MIN_EPISODES = 50;
 
@@ -25,6 +25,7 @@ type Props = {
   datasets: Dataset[];
   uploads: Record<string, UploadState>;
   rec: { repo: string; task: string; episodes: number; episodeSeconds: number; resetSeconds: number };
+  campaign: CampaignStatus | null;
   actions: VoiceActions;
 };
 
@@ -84,7 +85,7 @@ const GUIDE = {
 
 // ---------------------------------------------------------------- component
 
-export default function StudioVoice({ status, logs, datasets, uploads, rec, actions }: Props) {
+export default function StudioVoice({ status, logs, datasets, uploads, rec, campaign, actions }: Props) {
   const [narrate, setNarrate] = useState(true);
   const [listening, setListening] = useState(false);
   const [typed, setTyped] = useState("");
@@ -150,6 +151,20 @@ export default function StudioVoice({ status, logs, datasets, uploads, rec, acti
   }, [status, rec.episodes, rec.episodeSeconds, rec.resetSeconds, logs, say]);
 
   useEffect(() => () => clearTimers(), []);
+
+  // ---------- campaign prompts (spoken to the operator)
+  const campaignSeq = useRef<number | null>(null);
+  useEffect(() => {
+    if (!campaign) return;
+    if (campaignSeq.current === null) {
+      campaignSeq.current = campaign.messageSeq; // don't replay the last message on page load
+      return;
+    }
+    if (campaign.messageSeq > campaignSeq.current) {
+      campaignSeq.current = campaign.messageSeq;
+      if (campaign.message) say(campaign.message, { interrupt: campaign.state === "paused" || campaign.state === "error" });
+    }
+  }, [campaign, say]);
 
   // ---------- warnings from the log
 
@@ -232,6 +247,25 @@ export default function StudioVoice({ status, logs, datasets, uploads, rec, acti
         return say("Cancelled.");
       }
 
+      // Campaign: "ready" starts the waiting batch; pause / resume / skip.
+      const waiting = campaign && (campaign.state === "setup" || campaign.state === "waiting_ready");
+      if (waiting && has(t, "ready", "i'm ready", "im ready", "all set", "set up", "go ahead", "skip")) {
+        await studio.campaignAction(has(t, "skip") ? "skip" : "ready");
+        return say("Starting the batch. Keep hands clear of the follower.");
+      }
+      if (campaign && has(t, "pause campaign", "pause the campaign", "pause")) {
+        await studio.campaignAction("pause");
+        return say("The campaign will pause after this batch.");
+      }
+      if (campaign && has(t, "start campaign", "start the campaign", "resume campaign", "resume", "continue campaign")) {
+        await studio.campaignAction("start");
+        return say("Campaign started. I'll tell you what to set up.");
+      }
+      if (campaign && has(t, "progress", "how far", "how many left")) {
+        const left = campaign.targets.map((x) => `${x.object} ${x.done} of ${x.target}`).join(", ");
+        return say(`Campaign progress: ${left}.`);
+      }
+
       // Questions ("how many episodes should I record?") never trigger motion commands.
       const question = /^(how|what|why|when|where|which|should|is|does|do i|tell me)\b/.test(t);
 
@@ -302,7 +336,7 @@ export default function StudioVoice({ status, logs, datasets, uploads, rec, acti
       if (has(t, "train", "how do i", "how to")) return say(GUIDE.train);
       return say(`Sorry, I didn't catch that. ${GUIDE.help}`);
     },
-    [actions, pending, status, rec, dataset, nextStep, describe, say],
+    [actions, pending, status, rec, dataset, nextStep, describe, say, campaign],
   );
 
   // ---------- microphone
@@ -354,7 +388,7 @@ export default function StudioVoice({ status, logs, datasets, uploads, rec, acti
         </form>
       </div>
       <div className="row small" style={{ marginTop: 8 }}>
-        {["What's next?", "Status", "How do I train?", "How many episodes?", "Tips", "What objects?", "Check motors", "What do you see?", "Where is the pink pen?"].map((q) => (
+        {["What's next?", "Status", "How do I train?", "How many episodes?", "Tips", "What objects?", "Check motors", "What do you see?", "Where is the pink pen?", "Campaign progress"].map((q) => (
           <button key={q} className="chip" onClick={() => handle(q)}>{q}</button>
         ))}
       </div>
