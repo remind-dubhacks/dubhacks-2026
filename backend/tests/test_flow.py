@@ -27,7 +27,6 @@ class FakeWorker:
 @pytest.fixture
 def client(monkeypatch):
     monkeypatch.setattr(main.settings, "mongodb_uri", "")
-    monkeypatch.setattr(main.settings, "xai_api_key", "")
     fake = FakeWorker()
     for name in ("health", "submit", "status", "stop"):
         monkeypatch.setattr(robot_client, name, getattr(fake, name))

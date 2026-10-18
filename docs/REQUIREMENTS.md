@@ -47,7 +47,7 @@ Priority: **P0** = must work in the demo, **P1** = should, **P2** = stretch.
 ### 4.2 Conversational agent
 | ID | Requirement | Pri |
 | --- | --- | --- |
-| A1 | Voice in/out (Grok Voice) plus typed/tap fallback. | P0 |
+| A1 | Voice in (browser speech-to-text) and out (ElevenLabs) with Gemini tool calling, plus typed/tap fallback. | P0 |
 | A2 | Agent maps the resident's request to a game from the **catalog** and emits a **structured intent**. The LLM never drives motors. | P0 |
 | A3 | Server checks consent, game allowlist and robot readiness before any robot job. | P0 |
 | A4 | Tone rules: one short question at a time, never shame, never correct personal memories, no medical claims. | P0 |
@@ -103,7 +103,7 @@ Resident UI (Next.js)     Caregiver UI (Next.js)
            FastAPI orchestrator ---- MongoDB
             |        |      \
          Agent    Robot     Vision check
-       (Grok)    worker     (camera + Perceptron)
+       (Gemini)  worker     (camera + Perceptron)
                     |
                  SO-101 arm
                             Photon (caregiver alerts)
@@ -152,7 +152,7 @@ Each person owns one area end to end and is the reviewer for the interfaces they
 
 ### Member 3: Conversational agent and backend orchestration
 **Owns:** `backend/`.
-- Grok Voice integration, prompt and tone rules, structured intents (A1, A2, A4).
+- Gemini tool-calling agent and ElevenLabs speech, prompt and tone rules, structured intents (A1, A2, A4).
 - Catalog (`catalog.py`, `GET /api/catalog`) with Reorder enabled and 2-3 "coming soon" entries (A6).
 - Session state machine for the Reorder flow, allowlist/consent/readiness validation, stop handling (A3, A5).
 - Wrong-answer feedback generation from the vision reason (G6).

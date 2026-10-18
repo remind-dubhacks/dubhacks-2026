@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ItemCard } from "@/components/ItemCard";
 import { MAX_TRIALS } from "@/lib/reorder";
-import { voiceReset, voiceTurn, type ToolCall, type VoiceState } from "@/lib/voice";
+import { fetchTts, voiceReset, voiceStatus, voiceTurn, type ToolCall, type VoiceState } from "@/lib/voice";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const SR: any = typeof window !== "undefined" ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition : null;
@@ -27,6 +27,10 @@ export default function Voice() {
   const [err, setErr] = useState<string | null>(null);
   const [hasSR, setHasSR] = useState(true);
   const endRef = useRef<HTMLDivElement>(null);
+  const [provider, setProvider] = useState("rules");
+  const [tts, setTts] = useState(false); // ElevenLabs available
+  const ttsRef = useRef(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const recRef = useRef<any>(null);
   const listeningRef = useRef(false);
@@ -36,6 +40,9 @@ export default function Voice() {
   tableRef.current = table;
 
   useEffect(() => {
+    voiceStatus().then((st) => { setProvider(st.provider); setTts(st.tts); ttsRef.current = st.tts; });
+  }, []);
+  useEffect(() => {
     try { setLog(JSON.parse(localStorage.getItem(HISTORY_KEY) ?? "[]")); } catch { /* ignore */ }
   }, []);
   useEffect(() => {
@@ -43,19 +50,35 @@ export default function Voice() {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [log]);
 
+
   const startRec = useCallback(() => {
     try { if (listeningRef.current && !speakingRef.current) recRef.current?.start(); } catch { /* already started */ }
   }, []);
 
-  const speak = useCallback((text: string) => {
-    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
-    window.speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text);
-    u.rate = 0.9;
+  const speak = useCallback(async (text: string) => {
+    if (typeof window === "undefined") return;
+    window.speechSynthesis?.cancel();
+    audioRef.current?.pause();
     speakingRef.current = true;
     try { recRef.current?.stop(); } catch { /* not running */ } // don't listen to ourselves
-    u.onend = u.onerror = () => { speakingRef.current = false; startRec(); };
-    window.speechSynthesis.speak(u);
+    const finish = () => { speakingRef.current = false; startRec(); };
+    const browserVoice = () => {
+      if (!("speechSynthesis" in window)) return finish();
+      const u = new SpeechSynthesisUtterance(text);
+      u.rate = 0.9;
+      u.onend = u.onerror = finish;
+      window.speechSynthesis.speak(u);
+    };
+    if (!ttsRef.current) return browserVoice();
+    try {
+      const url = URL.createObjectURL(await fetchTts(text));
+      const a = new Audio(url);
+      audioRef.current = a;
+      a.onended = a.onerror = () => { URL.revokeObjectURL(url); finish(); };
+      await a.play();
+    } catch {
+      browserVoice(); // ElevenLabs failed or was blocked: use the browser voice
+    }
   }, [startRec]);
 
   const send = useCallback(async (text: string) => {
@@ -110,7 +133,7 @@ export default function Voice() {
   function endConversation() {
     listeningRef.current = false; setListening(false); setStarted(false);
     try { recRef.current?.stop(); } catch { /* */ }
-    window.speechSynthesis?.cancel();
+    window.speechSynthesis?.cancel(); audioRef.current?.pause();
     send("stop");
   }
 
@@ -126,7 +149,7 @@ export default function Voice() {
   return (
     <main className="play voice">
       <h1>ReMind</h1>
-      <p className="small">{hasSR ? "Talk to the assistant; it talks back." : "This browser has no speech recognition (use Chrome); typing works."}</p>
+      <p className="small">{hasSR ? `Brain: ${provider === "gemini" ? "Gemini" : "keyword rules (set GEMINI_API_KEY)"} · Voice: ${tts ? "ElevenLabs" : "browser (set ELEVENLABS_API_KEY)"}` : "This browser has no speech recognition (use Chrome); typing works."}</p>
 
       {!started ? (
         <button className="primary big start" onClick={startConversation} disabled={!hasSR}>🎙️ Start conversation</button>
@@ -160,7 +183,7 @@ export default function Voice() {
         {log.map((m, i) => (
           <div key={i} className={`bubble ${m.role}`}>
             <span className="who">{m.role === "you" ? "You" : "ReMind"}</span>
-            <p>{m.text}</p>
+            {m.text && <p>{m.text}</p>}
             {m.tools && m.tools.length > 0 && <p className="chips">{m.tools.map((t, j) => <span key={j} className="chip">🔧 {t}</span>)}</p>}
           </div>
         ))}

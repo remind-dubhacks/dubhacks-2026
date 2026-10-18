@@ -28,3 +28,22 @@ export async function voiceTurn(sessionId: string, text: string, tableOrder: str
 
 export const voiceReset = (sessionId: string) =>
   fetch(`${API}/api/voice/reset`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId }) });
+
+export async function voiceStatus(): Promise<{ provider: "gemini" | "rules"; tts: boolean }> {
+  try {
+    return await (await fetch(`${API}/api/voice/status`)).json();
+  } catch {
+    return { provider: "rules", tts: false };
+  }
+}
+
+// ElevenLabs speech from the backend; throws if unavailable so callers can fall back to the browser voice.
+export async function fetchTts(text: string): Promise<Blob> {
+  const r = await fetch(`${API}/api/voice/tts`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+  });
+  if (!r.ok) throw new Error(`tts ${r.status}`);
+  return r.blob();
+}

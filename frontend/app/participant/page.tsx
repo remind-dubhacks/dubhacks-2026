@@ -169,7 +169,7 @@ function Participant() {
         </label>
       </p>
       {error && <p className="status warn">{error}</p>}
-      {/* TODO(Grok Voice, P1): add push-to-talk mic input that feeds transcripts into send(). */}
+      {/* TODO(P1): add push-to-talk mic input that feeds transcripts into send(). */}
     </main>
   );
 }
