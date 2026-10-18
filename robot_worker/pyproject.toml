@@ -2,7 +2,7 @@
 name = "remind-robot-worker"
 version = "0.1.0"
 description = "ReMind SO-101 robot worker (mock or Perceptron policy)"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
@@ -13,4 +13,4 @@ dependencies = [
 
 [project.optional-dependencies]
 # Only needed on the machine wired to the SO-101: `uv sync --extra hardware`
-hardware = ["lerobot>=0.3", "numpy", "pillow"]
+hardware = ["lerobot[feetech,hardware,dataset,core-scripts,viz]>=0.6", "numpy", "pillow"]
