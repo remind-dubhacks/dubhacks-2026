@@ -115,6 +115,7 @@ export const studio = {
   cameras: () => req<{ index: number; width: number; height: number }[]>("/studio/cameras"),
   cameraUrl: (i: number) => `${WORKER}/studio/camera/${i}.mjpg`,
   health: () => req<Record<string, Record<string, MotorHealth | string>>>("/studio/health"),
+  clearFault: (arm: "follower" | "leader" = "follower", motor = "gripper") => post<{ cleared: boolean; tempC: number }>("/studio/clear-fault", { arm, motor }),
   releaseCameras: () => post("/studio/cameras/release"),
   setCameras: (side: number, wrist: number) => post("/studio/config/cameras", { side, wrist }),
   teleop: (rerun = true) => post("/studio/teleop", { cameras: true, rerun }),

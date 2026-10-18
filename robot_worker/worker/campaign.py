@@ -252,6 +252,8 @@ class Campaign:
             return self.pause(f"Stopped. {gained} saved. Say resume to continue.")
         if studio.proc.exit_code not in (0, None):
             reason = next((l for l in reversed([x for _, x in studio.proc.logs]) if "Error" in l or "error" in l), "see the log")
+            if gained >= n:  # every episode saved; the error came while shutting the arm down
+                return self.pause(f"Batch saved, {self.progress[t.id]} of {t.target}. {short_reason(reason)}")
             return self.pause(f"Recording failed. {gained} saved. {short_reason(reason)}")
 
         # 4. Break

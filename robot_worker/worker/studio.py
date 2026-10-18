@@ -174,6 +174,46 @@ def motor_health(port: str) -> dict:
     return out
 
 
+class ClearIn(BaseModel):
+    arm: Literal["follower", "leader"] = "follower"
+    motor: str = "gripper"
+
+
+@router.post("/clear-fault")
+def clear_fault(body: ClearIn) -> dict:
+    """Operator-requested recovery from a latched servo fault (same effect as a power cycle):
+    set the motor's target to where it already is (no motion), toggle torque so the status clears,
+    and leave that motor's torque off. Refused while LeRobot is using the arms."""
+    import scservo_sdk as scs
+
+    if proc.running:
+        raise HTTPException(409, "stop teleop/recording first")
+    if body.motor not in MOTORS:
+        raise HTTPException(422, "unknown motor")
+    port = env("SO101_PORT" if body.arm == "follower" else "LEADER_PORT")
+    mid = MOTORS.index(body.motor) + 1
+    ph, pk = scs.PortHandler(port), scs.PacketHandler(0)
+    if not ph.openPort():
+        raise HTTPException(500, "could not open the arm's port")
+    ph.setBaudRate(1_000_000)
+    try:
+        pos, comm, _ = pk.read2ByteTxRx(ph, mid, 56)
+        if comm != scs.COMM_SUCCESS:
+            raise HTTPException(500, "motor not answering; unplug that arm's DC power for 10 s")
+        temp, _, _ = pk.read1ByteTxRx(ph, mid, 63)
+        if temp >= 65:
+            raise HTTPException(409, f"{body.motor} is hot ({temp}°C); let it cool first")
+        pk.write2ByteTxRx(ph, mid, 42, pos)  # target = current position
+        pk.write1ByteTxRx(ph, mid, 40, 1)
+        time.sleep(0.4)
+        pk.write1ByteTxRx(ph, mid, 40, 0)
+        time.sleep(0.2)
+        _, _, err = pk.read2ByteTxRx(ph, mid, 42)
+    finally:
+        ph.closePort()
+    return {"arm": body.arm, "motor": body.motor, "cleared": not err, "tempC": temp}
+
+
 @router.get("/health")
 def health() -> dict:
     if proc.running:
@@ -358,6 +398,7 @@ def record_cmd(body: RecordIn) -> tuple[list[str], bool]:
         f"--dataset.reset_time_s={body.resetSeconds}",
         "--dataset.fps=30",
         "--dataset.push_to_hub=false",
+        "--dataset.no_stamp=true",  # LeRobot 0.6 otherwise makes a new timestamped folder per run, breaking resume
         f"--display_data={'true' if body.rerun else 'false'}",
         f"--play_sounds={'true' if body.sounds else 'false'}",
     ]

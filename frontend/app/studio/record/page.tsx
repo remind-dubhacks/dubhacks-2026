@@ -111,6 +111,13 @@ export default function RecordPage() {
         {stopped && !waiting && campaign?.state !== "done" && (
           <button className="primary huge" onClick={() => act("start")}>{done > 0 || campaign?.paused ? "Resume" : "Start"}</button>
         )}
+        {stopped && /gripper|motor overloaded/i.test(campaign?.message ?? "") && (
+          <button className="huge" onClick={async () => {
+            claimVoice(true);
+            try { const r = await studio.clearFault(); setErr(r.cleared ? null : "Fault still there: unplug the follower's DC power for 10 s."); }
+            catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
+          }}>Clear gripper fault</button>
+        )}
         <button className="stop huge" onClick={() => { claimVoice(true); studio.stop().catch(() => {}); if (campaign?.running) studio.campaignAction("pause").catch(() => {}); }}>Stop</button>
       </div>
 
