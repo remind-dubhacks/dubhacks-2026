@@ -10,6 +10,8 @@ from .motion_guard import ActionGuard, GraspMonitor, GuardError
 from .robot import Stopped
 
 DEFAULT_START = ["black", "white", "purple"]  # docs/RECORDING_SETUP.md
+# Retry offsets (deg of shoulder_pan) when a pick misses: same spot, then a little to each side.
+SEARCH_OFFSETS_DEG = [float(x) for x in os.getenv("PICK_SEARCH_DEG", "0,2.5,-2.5,5,-5").split(",")]
 HANDS_EVERY = int(os.getenv("HANDS_CHECK_EVERY_N_ACTIONS", "6"))  # ~5 checks a second at 30 fps
 HANDS_CLEAR_S = float(os.getenv("HANDS_CLEAR_SECONDS", "1.5"))  # table must stay clear this long
 HANDS_MAX_WAIT_S = float(os.getenv("HANDS_MAX_WAIT_SECONDS", "30"))
@@ -123,6 +125,26 @@ class PerceptronExecutor:
         self.last_check: dict | None = None
         self.hand_pauses = 0
 
+    def _finish_scripted(self, spec: dict, ai_check: dict, stop: threading.Event) -> bool:
+        """Hybrid: the AI policy tried first. If the camera sees all three keyrings but not in the
+        expected order, finish the job with the one scripted shuffle that turns what is on the table
+        into the expected row. Returns True when that worked. Never runs when the camera can't see
+        all three (a keyring may be in the gripper or in slot 4)."""
+        from .shuffle_math import shuffle_for
+
+        observed = ai_check.get("observed")
+        if os.getenv("HYBRID_SCRIPTED", "1") != "1" or not observed or not all(observed):
+            return False
+        if ScriptedExecutor.missing_poses():
+            return False
+        sid = shuffle_for(list(observed), list(ai_check["expected"]))
+        if sid is None:
+            return False
+        fb = ScriptedExecutor(robot=self.robot)
+        fb.execute({**spec, "shuffle": sid, "start": list(observed)}, stop)
+        self.last_check = {**(fb.last_check or {}), "mode": "ai+scripted", "aiCheck": ai_check, "scriptedShuffle": sid}
+        return True
+
     GRANT_TTL_S = int(os.getenv("PERCEPTRON_SESSION_TTL_S", "3600"))
 
     def _get_grant(self):
@@ -222,7 +244,9 @@ class PerceptronExecutor:
                 raise RobotError("object_still_held", "time ran out with a keyring still in the gripper")
             check = shuffle_check(spec, side) or {}
             extra = {"grasp": monitor.summary(), "guard": guard_total, "handPauses": self.hand_pauses}
-            self.last_check = {**check, **extra}
+            self.last_check = {**check, **extra, "mode": "ai"}
+            if check and check.get("verdict") != "ok" and self._finish_scripted(spec, check, stop):
+                return
             if check.get("verdict") == "mismatch":
                 raise RobotError("shuffle_mismatch", f"expected {check['expected']}, saw {check['observed']}")
         except Stopped:
@@ -379,11 +403,23 @@ class ScriptedExecutor:
             move(down)
             grip(GRIP_CLOSE, 0.4)
             if not self._holding():
-                # Missed: open, try once more from the same spot, then stop before placing so a
-                # missed keyring is never knocked by the next move.
-                grip(GRIP_OPEN, 0.3)
-                grip(GRIP_CLOSE, 0.4)
-                if not self._holding():
+                # Missed: feel for it. The gripper reading tells holding from empty, so search a
+                # little to each side (the camera can't see slot 4, where keyrings shift on release).
+                # Lift between tries so a miss never drags the keyring; stop before placing if all fail.
+                found = False
+                for off in SEARCH_OFFSETS_DEG:
+                    grip(GRIP_OPEN, 0.2)
+                    move(above)
+                    a2 = {**above, "shoulder_pan.pos": above["shoulder_pan.pos"] + off}
+                    d2 = {**down, "shoulder_pan.pos": down["shoulder_pan.pos"] + off}
+                    move(a2)
+                    move(d2)
+                    grip(GRIP_CLOSE, 0.4)
+                    if self._holding():
+                        above, found = a2, True
+                        self.corrections.append({"slot": a, "object": obj, "searchDeg": off})
+                        break
+                if not found:
                     grip(GRIP_OPEN, 0.3)
                     move(above)
                     move(poses["home"])

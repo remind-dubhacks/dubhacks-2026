@@ -88,3 +88,13 @@ export async function fetchSessions(): Promise<CompanionSession[]> {
   if (!r.ok) throw new Error(`${r.status}`);
   return r.json();
 }
+
+export async function sendTestText(phone: string): Promise<string | null> {
+  try {
+    const r = await fetch(`${API}/api/voice/test-text`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone }) });
+    if (r.ok) return null;
+    return (await r.json().catch(() => null))?.detail ?? `Failed (${r.status})`;
+  } catch {
+    return "Could not reach the backend";
+  }
+}

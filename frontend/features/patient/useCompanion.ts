@@ -76,7 +76,7 @@ export function useCompanion() {
     setStatus("setup");
   }, []);
 
-  const start = useCallback(async (name: string, games: string[], participantId?: string) => {
+  const start = useCallback(async (name: string, games: string[], participantId?: string, phone = "") => {
     setError(null);
     setStatus("connecting");
     liveRef.current?.stop(); // starting again from the Esc setup card: close the old session so it ends (and is digested)
@@ -96,7 +96,7 @@ export function useCompanion() {
     });
     liveRef.current = live;
     try {
-      await live.start({ games: games.join(","), ...(name ? { name } : {}), ...(participantId ? { participantId } : {}) });
+      await live.start({ games: games.join(","), ...(name ? { name } : {}), ...(participantId ? { participantId } : {}), ...(phone ? { phone } : {}) });
       setStatus("live");
     } catch (e) {
       liveRef.current = null;

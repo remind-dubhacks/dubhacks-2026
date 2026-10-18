@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 
 from fastapi import WebSocket
 
+from ..alerts import normalize_phone
 from ..config import settings
 from ..tasks import background
 from . import memory
@@ -202,7 +203,8 @@ async def run(ws: WebSocket) -> None:
     profile = participant.get("careProfile") or {}
     name = (ws.query_params.get("name") or profile.get("preferredName") or participant.get("alias") or "").strip()[:40] or "friend"
     games = [g for g in (ws.query_params.get("games") or "").split(",") if g in GAMES] or list(GAMES)
-    state = GameState(patient_name=name, enabled_games=games)
+    phone = normalize_phone(ws.query_params.get("phone") or "")
+    state = GameState(patient_name=name, enabled_games=games, caregiver_phone=phone, session_id=uuid.uuid4().hex)
     nudge_after = SLOW_NUDGE_AFTER_S if needs_slow_pacing(profile) else NUDGE_AFTER_S
     started_at = datetime.now(timezone.utc)
     user_buf = ai_buf = ""

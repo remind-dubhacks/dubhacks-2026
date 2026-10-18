@@ -9,6 +9,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api, type Participant } from "@/lib/api";
+import { sendTestText } from "@/lib/voice";
 
 const GAMES = [
   { id: "faces", label: "Famous faces", on: true, icon: "M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18Z M8.5 14.5c1 1.3 2.2 2 3.5 2s2.5-.7 3.5-2 M9 9.5h.01 M15 9.5h.01" },
@@ -27,7 +28,7 @@ type Props = {
   live: boolean;
   connecting: boolean;
   error: string | null;
-  onStart: (name: string, games: string[], participantId?: string) => void;
+  onStart: (name: string, games: string[], participantId?: string, phone?: string) => void;
   onEnd: () => void;
   onHide: () => void;
 };
@@ -85,17 +86,21 @@ function NurseGate({ onClose }: { onClose: () => void }) {
 
 export function SetupCard({ live, connecting, error, onStart, onEnd, onHide }: Props) {
   const [name, setName] = useState("");
+  const [phone, setPhone] = useState(""); // caregiver's phone: gets a text when something concerning is said
+  const [testMsg, setTestMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [testing, setTesting] = useState(false);
   const [games, setGames] = useState<string[]>(GAMES.filter((g) => g.on && available(g.id)).map((g) => g.id));
   const [residents, setResidents] = useState<Participant[] | null>(null); // null while loading
   const [choice, setChoice] = useState(""); // a resident's _id, or GUEST
   const [gateOpen, setGateOpen] = useState(false);
 
   useEffect(() => {
-    let saved: { name?: string; games?: string[]; participantId?: string } | null = null;
+    let saved: { name?: string; games?: string[]; participantId?: string; phone?: string } | null = null;
     try {
       saved = JSON.parse(localStorage.getItem(SAVED) ?? "null");
       if (Array.isArray(saved?.games)) setGames(saved.games.filter(available));
       if (saved?.name && !saved.participantId) setName(saved.name);
+      if (saved?.phone) setPhone(saved.phone);
     } catch { /* ignore */ }
     const wasGuest = !!saved?.name && !saved.participantId;
     api.participants()
@@ -114,9 +119,17 @@ export function SetupCard({ live, connecting, error, onStart, onEnd, onHide }: P
   function start(e: React.FormEvent) {
     e.preventDefault();
     const chosen = games.filter(available);
-    const saved = resident ? { games: chosen, participantId: resident._id } : { games: chosen, name };
+    const saved = resident ? { games: chosen, participantId: resident._id, phone } : { games: chosen, name, phone };
     try { localStorage.setItem(SAVED, JSON.stringify(saved)); } catch { /* ignore */ }
-    onStart(resident ? "" : name.trim(), chosen, resident?._id);
+    onStart(resident ? "" : name.trim(), chosen, resident?._id, phone.trim());
+  }
+
+  async function testText() {
+    setTesting(true);
+    setTestMsg(null);
+    const err = await sendTestText(phone.trim());
+    setTestMsg(err ? { ok: false, text: err } : { ok: true, text: "Test text sent." });
+    setTesting(false);
   }
 
   const toggle = (id: string) => setGames((gs) => (gs.includes(id) ? gs.filter((g) => g !== id) : [...gs, id]));
@@ -171,6 +184,18 @@ export function SetupCard({ live, connecting, error, onStart, onEnd, onHide }: P
             </div>
           </label>
         )}
+        <label className="field">
+          <span>Caregiver&apos;s phone (optional): gets a text if something concerning is said</span>
+          <div className="field-well">
+            <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(206) 555-1234" />
+          </div>
+          {phone.trim() && (
+            <span className="field-note">
+              <button type="button" onClick={testText} disabled={testing}>{testing ? "Sending…" : "Send test text"}</button>
+              {testMsg && <> <span className={testMsg.ok ? "" : "error"}>{testMsg.text}</span></>}
+            </span>
+          )}
+        </label>
         <div className="field">
           <span id="games-label">Games</span>
           <div className="tray" role="group" aria-labelledby="games-label">
