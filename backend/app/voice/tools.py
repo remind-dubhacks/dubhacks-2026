@@ -43,6 +43,7 @@ class GameState:
     sound_id: int = 0
     games_played: list[str] = field(default_factory=list)
     observations: list[dict] = field(default_factory=list)
+    facts: list[str] = field(default_factory=list)  # remember_fact; saved to long-term memory (voice/memory.py)
 
     def view(self) -> dict:
         return {
@@ -74,6 +75,11 @@ TOOL_SCHEMAS = [
             "engagement": {"type": "string", "enum": ["engaged", "some", "withdrawn"]},
             "note": {"type": "string", "description": "One short sentence, e.g. 'Talked about seeing Elvis films with her sister.'"}},
             "required": ["engagement"]}}},
+    {"type": "function", "function": {
+        "name": "remember_fact", "description": "Save one lasting fact the person shared about themselves, so you remember it next time. Not for passing remarks.",
+        "parameters": {"type": "object", "properties": {
+            "fact": {"type": "string", "description": "One short sentence, e.g. 'Her favourite film star is Cary Grant.'"}},
+            "required": ["fact"]}}},
 ]
 
 
@@ -90,6 +96,7 @@ TOOL_INFO = {
     "show_message": {"status": "real", "example": "(Greeting)", "does": "Shows one short sentence on the patient screen (12 words max)."},
     "end_game": {"status": "real", "example": "Let's stop this one.", "does": "Ends a screen game and returns the screen to rest."},
     "note_response": {"status": "real", "example": "(After each item)", "does": "Records engagement and a short note in the session record for the nurse."},
+    "remember_fact": {"status": "real", "example": "My husband Walt took me to see Cary Grant films.", "does": "Saves a lasting fact to the patient's long-term memory (Backboard) for future sessions."},
 }
 
 
@@ -192,6 +199,13 @@ async def run_tool(state: GameState, name: str, args: dict, table_order: list[st
         item = SCREEN_GAMES[state.game][state.item_index]["id"] if state.game in SCREEN_GAMES else None
         engagement = args.get("engagement") if args.get("engagement") in ("engaged", "some", "withdrawn") else "some"
         state.observations.append({"game": state.game, "item": item, "engagement": engagement, "note": str(args.get("note", ""))[:200]})
+        return {"ok": True}
+
+    if name == "remember_fact":
+        fact = " ".join(str(args.get("fact", "")).split())[:200]
+        if not fact:
+            return {"ok": False, "error": "fact is empty"}
+        state.facts.append(fact)
         return {"ok": True}
 
     if name == "check_arrangement":

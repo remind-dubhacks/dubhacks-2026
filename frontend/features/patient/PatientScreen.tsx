@@ -27,7 +27,7 @@ export function PatientScreen() {
           live={status === "live"}
           connecting={status === "connecting"}
           error={error}
-          onStart={(name, games) => { setNurseOpen(false); start(name, games); }}
+          onStart={(name, games, participantId) => { setNurseOpen(false); start(name, games, participantId); }}
           onEnd={() => { setNurseOpen(false); end(); }}
           onHide={() => setNurseOpen(false)}
         />

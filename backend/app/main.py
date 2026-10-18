@@ -20,6 +20,7 @@ from .models import (
     ROBOT_BUSY,
     TERMINAL_JOB,
     TRANSITIONS,
+    CareProfile,
     FeedbackIn,
     JobCreate,
     JobStatus,
@@ -32,6 +33,7 @@ from .models import (
 )
 from .robot_client import RobotWorkerError
 from .vision import router as vision_router
+from .voice import memory
 from .voice import router as voice_router
 
 logging.basicConfig(level=logging.INFO)
@@ -44,6 +46,27 @@ DEMO_PARTICIPANT = {
     "communicationPreferences": {"largeText": True, "readAloud": True},
     "consentFlags": {"sessionConsent": True, "rememberPreferences": True},
     "preferences": {"favoriteObjectId": "tea_box"},
+    "careProfile": {
+        "preferredName": "Rose",
+        "speech": ["word_finding"],
+        "pace": "slow",
+        "hearing": "hearing_aid",
+        "bestTimeOfDay": "mornings, after breakfast",
+        "attentionMinutes": 15,
+        "stage": "moderate",
+        "orientation": "validation",
+        "calmingStrategies": ["talk about her garden", "play a Doris Day song", "slow down and lower your voice"],
+        "avoidTopics": ["her late husband Walt's illness", "moving out of her house"],
+        "distressSigns": ["asks to go home", "repeats that she is late for something"],
+        "lifeStory": [
+            "Grew up in Spokane and worked as an usherette at the Fox Theater in the 1950s.",
+            "Married Walt (died 2019); they went to the pictures every Saturday.",
+            "Daughter Linda visits on Sundays.",
+        ],
+        "interests": ["classic movie stars like Cary Grant, Audrey Hepburn and Gregory Peck",
+                      "Hollywood musicals and Doris Day", "gardening, especially roses"],
+        "conversationStarters": ["Who was your favourite leading man?", "What was the best picture you saw at the Fox?"],
+    },
 }
 
 
@@ -63,8 +86,11 @@ async def lifespan(app: FastAPI):
 
 
 async def seed(store: Store) -> None:
-    if not await store.get("participants", DEMO_PARTICIPANT["_id"]):
+    demo = await store.get("participants", DEMO_PARTICIPANT["_id"])
+    if not demo:
         await store.insert("participants", {**DEMO_PARTICIPANT, "createdAt": now()})
+    elif "careProfile" not in demo:  # seeded before care profiles existed
+        await store.update("participants", demo["_id"], {"careProfile": DEMO_PARTICIPANT["careProfile"]})
     for act in ACTIVITIES.values():
         if not await store.get("activities", act["_id"]):
             await store.insert("activities", act)
@@ -166,6 +192,32 @@ async def get_participant(pid: str, request: Request):
     if not p:
         raise HTTPException(404, "participant not found")
     return p
+
+
+@app.put("/api/participants/{pid}/care-profile")
+async def update_care_profile(pid: str, body: CareProfile, request: Request):
+    """Replace the care sheet. New life-story and interest lines are also added to long-term memory."""
+    s = store(request)
+    p = await s.get("participants", pid)
+    if not p:
+        raise HTTPException(404, "participant not found")
+    old = memory.profile_memories(p.get("careProfile") or {})
+    p = await s.update("participants", pid, {"careProfile": body.model_dump()})
+    if p.get("consentFlags", {}).get("rememberPreferences") and p.get("backboardAssistantId"):
+        for line in memory.profile_memories(p["careProfile"]):
+            if line not in old:
+                await memory.add(p["backboardAssistantId"], line, kind="care_profile")
+    return p
+
+
+@app.get("/api/participants/{pid}/memories")
+async def participant_memories(pid: str, request: Request):
+    """What the companion remembers about this person (Backboard), for the nurse."""
+    p = await store(request).get("participants", pid)
+    if not p:
+        raise HTTPException(404, "participant not found")
+    aid = p.get("backboardAssistantId")
+    return {"enabled": memory.enabled(), "memories": await memory.list_all(aid) if aid else []}
 
 
 @app.delete("/api/participants/{pid}")

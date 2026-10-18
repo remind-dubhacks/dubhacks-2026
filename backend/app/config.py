@@ -29,6 +29,10 @@ class Settings:
     elevenlabs_api_key: str = os.getenv("ELEVENLABS_API_KEY", "")
     elevenlabs_voice_id: str = os.getenv("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")  # any voice in your library
     elevenlabs_model: str = os.getenv("ELEVENLABS_MODEL", "eleven_flash_v2_5")
+    # Long-term patient memory (voice/memory.py). Unset key = memory off; sessions still run from the care profile.
+    backboard_api_key: str = os.getenv("BACKBOARD_API_KEY", "")
+    backboard_url: str = os.getenv("BACKBOARD_URL", "https://app.backboard.io/api")
+    backboard_timeout_s: float = float(os.getenv("BACKBOARD_TIMEOUT_S", "3.0"))  # session start waits at most this long
 
 
 settings = Settings()

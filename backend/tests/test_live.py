@@ -11,7 +11,12 @@ from app import main
 from app.config import settings
 
 
-def fake_gemini(port_holder: list, received: list):
+START_GAME = [{"id": "c1", "name": "start_game", "args": {"game_id": "reorder"}}]
+
+
+def fake_gemini(port_holder: list, received: list, calls: list | None = None):
+    calls = calls or START_GAME
+
     async def handler(ws):
         async for raw in ws:
             ev = json.loads(raw)
@@ -21,7 +26,7 @@ def fake_gemini(port_holder: list, received: list):
             elif "realtimeInput" in ev and "text" in ev["realtimeInput"] and sum("text" in e.get("realtimeInput", {}) for e in received) == 1:
                 send = lambda o: ws.send(json.dumps(o))  # noqa: E731
                 await send({"serverContent": {"inputTranscription": {"text": "play the ordering game"}}})
-                await send({"toolCall": {"functionCalls": [{"id": "c1", "name": "start_game", "args": {"game_id": "reorder"}}]}})
+                await send({"toolCall": {"functionCalls": calls}})
             elif "toolResponse" in ev:
                 send = lambda o: ws.send(json.dumps(o))  # noqa: E731
                 await send({"serverContent": {"outputTranscription": {"text": "Put the cup first."},
@@ -104,3 +109,47 @@ def test_live_relay_sends_reminder_without_turn_complete(monkeypatch):
             threading.Event().wait(0.05)
     cc = next(e["clientContent"] for e in received if "clientContent" in e)
     assert cc["turnComplete"] is False and "short sentences" in cc["turns"][0]["parts"][0]["text"]
+
+
+def test_live_relay_uses_patient_context(monkeypatch):
+    """?participantId= loads the care profile and memories into setup; remember_fact goes to memory in the background."""
+    from app.voice import memory
+    calls = [{"id": "c1", "name": "remember_fact", "args": {"fact": "Her favourite film is Roman Holiday."}}]
+    port, received = [], []
+    threading.Thread(target=fake_gemini, args=(port, received, calls), daemon=True).start()
+    for _ in range(50):
+        if port:
+            break
+        threading.Event().wait(0.05)
+    monkeypatch.setattr(settings, "gemini_api_key", "test")
+    monkeypatch.setattr(settings, "gemini_live_url", f"ws://127.0.0.1:{port[0]}")
+    recalled, added = [], []
+
+    async def fake_recall(aid, query=""):
+        recalled.append((aid, query))
+        return ["Saw Roman Holiday three times."]
+
+    async def fake_add(aid, content, kind="fact"):
+        added.append((aid, content))
+        return True
+    monkeypatch.setattr(memory, "recall", fake_recall)
+    monkeypatch.setattr(memory, "add", fake_add)
+
+    got = []
+    with TestClient(main.app) as c:
+        asyncio.run(main.app.state.store.update("participants", "demo-rose", {"backboardAssistantId": "a1"}))
+        with c.websocket_connect("/api/voice/live?participantId=demo-rose&games=faces") as ws:
+            while not any(m["type"] == "ai_done" for m in got):
+                got.append(ws.receive_json())
+        for _ in range(50):
+            if added:
+                break
+            threading.Event().wait(0.05)
+    setup = received[0]["setup"]
+    prompt = setup["systemInstruction"]["parts"][0]["text"]
+    assert "ABOUT ROSE" in prompt and "Cary Grant" in prompt and "Saw Roman Holiday three times." in prompt
+    assert setup["realtimeInputConfig"]["automaticActivityDetection"]["silenceDurationMs"] >= 2000
+    assert recalled[0][0] == "a1" and "classic movie stars" in recalled[0][1]
+    greeting = next(e["realtimeInput"]["text"] for e in received if "text" in e.get("realtimeInput", {}))
+    assert "Rose" in greeting and "classic movie stars" in greeting
+    assert added == [("a1", "Her favourite film is Roman Holiday.")]

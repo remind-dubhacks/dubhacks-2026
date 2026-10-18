@@ -76,7 +76,7 @@ export function useCompanion() {
     setStatus("setup");
   }, []);
 
-  const start = useCallback(async (name: string, games: string[]) => {
+  const start = useCallback(async (name: string, games: string[], participantId?: string) => {
     setError(null);
     setStatus("connecting");
     const live = new LiveVoice({
@@ -95,7 +95,7 @@ export function useCompanion() {
     });
     liveRef.current = live;
     try {
-      await live.start({ name, games: games.join(",") });
+      await live.start({ name, games: games.join(","), ...(participantId ? { participantId } : {}) });
       setStatus("live");
     } catch (e) {
       liveRef.current = null;

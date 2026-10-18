@@ -1,0 +1,117 @@
+"""Patient context: care profile -> prompt and pacing, and Backboard memory (mocked HTTP, no network)."""
+import json
+
+import httpx
+import pytest
+
+from app.config import settings
+from app.main import DEMO_PARTICIPANT
+from app.models import CareProfile
+from app.voice import memory
+from app.voice.live import NUDGE_AFTER_S, SLOW_VAD, VAD_PRESETS, build_setup, needs_slow_pacing
+from app.voice.prompts.voice_system_prompt import render_profile
+
+ROSE = DEMO_PARTICIPANT["careProfile"]
+
+
+def test_demo_profile_is_valid():
+    assert CareProfile(**ROSE).pace == "slow"
+
+
+def test_render_profile():
+    text = render_profile("Rose", ROSE, ["Saw Roman Holiday three times with {her sister}."])
+    assert text.startswith("\n\nABOUT ROSE")
+    assert "Cary Grant" in text and "Who was your favourite leading man?" in text
+    assert "never fill a silence quickly" in text  # pace=slow
+    assert "loses a word" in text  # word_finding
+    assert "Avoid raising: her late husband" in text
+    assert "From earlier sessions: Saw Roman Holiday three times with {her sister}." in text
+    assert "{name}" not in text
+    assert render_profile("Ann", {}, []) == "" and render_profile("Ann", CareProfile().model_dump(), []) != ""
+
+
+def test_stutter_note():
+    assert "never finish their words" in render_profile("Bob", {"speech": ["stutter"]})
+
+
+def test_build_setup_profile_and_pacing():
+    setup = build_setup("Rose", ["faces"], vad="default", profile=ROSE, memories=["Loves {braces}."])["setup"]
+    vad = setup["realtimeInputConfig"]["automaticActivityDetection"]
+    assert vad == {**VAD_PRESETS["default"], **SLOW_VAD} and vad["silenceDurationMs"] >= 2000
+    prompt = setup["systemInstruction"]["parts"][0]["text"]
+    assert "Audrey Hepburn" in prompt and "Loves {braces}." in prompt and "remember_fact" in prompt
+    plain = build_setup("Ann", ["faces"], vad="default")["setup"]
+    assert plain["realtimeInputConfig"]["automaticActivityDetection"] == VAD_PRESETS["default"]
+    assert "ABOUT" not in plain["systemInstruction"]["parts"][0]["text"]
+
+
+def test_needs_slow_pacing():
+    assert needs_slow_pacing({"speech": ["stutter"]}) and needs_slow_pacing({"pace": "slow"})
+    assert not needs_slow_pacing({"speech": ["soft_voice"]}) and not needs_slow_pacing(None)
+    assert NUDGE_AFTER_S < 45
+
+
+@pytest.fixture
+def backboard(monkeypatch):
+    """Fake Backboard: records requests, answers like the documented API."""
+    calls = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        body = json.loads(req.content) if req.content else None
+        calls.append((req.method, req.url.path, body, req.headers.get("X-API-Key")))
+        if req.url.path.endswith("/assistants"):
+            return httpx.Response(200, json={"assistant_id": "a1"})
+        if req.url.path.endswith("/memories/search") or (req.method == "GET" and req.url.path.endswith("/memories")):
+            return httpx.Response(200, json={"memories": [{"id": "m1", "content": "Loves Cary Grant"}], "total_count": 1})
+        return httpx.Response(200, json={"ok": True})
+
+    monkeypatch.setattr(settings, "backboard_api_key", "k")
+    monkeypatch.setattr(settings, "backboard_url", "https://bb.test/api")
+    monkeypatch.setattr(memory, "_transport", httpx.MockTransport(handler))
+    return calls
+
+
+async def test_recall_and_add(backboard):
+    assert await memory.recall("a1", "movie stars") == ["Loves Cary Grant"]
+    assert backboard[-1][:3] == ("POST", "/api/assistants/a1/memories/search", {"query": "movie stars", "limit": memory.RECALL_LIMIT})
+    assert backboard[-1][3] == "k"
+    assert await memory.recall("a1") == ["Loves Cary Grant"] and backboard[-1][0] == "GET"
+    assert await memory.recall(None) == []
+    assert await memory.add("a1", "Daughter is Linda.")
+    assert backboard[-1][2] == {"content": "Daughter is Linda.", "metadata": {"kind": "fact"}}
+
+
+async def test_digest_session(backboard):
+    obs = [{"note": "Talked about Gregory Peck."}, {"note": ""}]
+    assert await memory.digest_session("a1", "Rose", obs)
+    method, path, body, _ = backboard[-1]
+    assert (method, path) == ("POST", "/api/threads/messages")
+    assert body["assistant_id"] == "a1" and body["memory"] == "Auto" and "Gregory Peck" in body["content"]
+    assert not await memory.digest_session("a1", "Rose", [{"note": ""}])
+
+
+async def test_ensure_assistant_creates_and_seeds(backboard):
+    from app.db import MemoryStore
+    store = MemoryStore()
+    p = {"_id": "p1", "alias": "Rose", "careProfile": ROSE}
+    await store.insert("participants", dict(p))
+    assert await memory.ensure_assistant(store, p) == "a1"
+    assert (await store.get("participants", "p1"))["backboardAssistantId"] == "a1"
+    create = backboard[0]
+    assert create[1] == "/api/assistants" and create[2]["custom_fact_extraction_prompt"] == memory.FACT_PROMPT
+    seeded = [c[2]["content"] for c in backboard if c[1] == "/api/assistants/a1/memories"]
+    assert len(seeded) == len(memory.profile_memories(ROSE)) and any("Cary Grant" in s for s in seeded)
+    assert await memory.ensure_assistant(store, p) == "a1" and len(backboard) == 1 + len(seeded)  # no second create
+
+
+async def test_off_without_key_and_on_errors(monkeypatch):
+    monkeypatch.setattr(settings, "backboard_api_key", "")
+    assert await memory.recall("a1", "x") == [] and not await memory.add("a1", "x")
+    monkeypatch.setattr(settings, "backboard_api_key", "k")
+    monkeypatch.setattr(memory, "_transport", httpx.MockTransport(lambda r: httpx.Response(500)))
+    assert await memory.recall("a1", "x") == []
+
+    def timeout(req):
+        raise httpx.ReadTimeout("slow", request=req)
+    monkeypatch.setattr(memory, "_transport", httpx.MockTransport(timeout))
+    assert await memory.recall("a1") == [] and await memory.create_assistant("Rose") is None
