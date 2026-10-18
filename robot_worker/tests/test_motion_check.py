@@ -611,6 +611,7 @@ def guided(monkeypatch, positions):
 
 
 def test_off_center_keyring_is_picked_where_it_really_is(monkeypatch):
+    monkeypatch.setenv("PICK_CAMERA_CORRECTION", "1")
     ex = guided(monkeypatch, {"black": (0.72, 900), "white": (0.44, 900), "purple": (0.12, 900)})
     ex.execute({"instruction": "x", "shuffle": "swap_lr"}, executors.threading.Event())
     first = ex.corrections[0]
@@ -624,3 +625,36 @@ def test_wrong_start_layout_never_moves(monkeypatch):
     with pytest.raises(executors.RobotError) as e:
         ex.execute({"instruction": "x", "shuffle": "swap_lr"}, executors.threading.Event())
     assert e.value.code == "start_mismatch" and ex.robot.path == []
+
+
+class GripArm(FakeArm):
+    """Gripper reads 20 when holding, 11 when it closed on nothing (pattern per close)."""
+
+    def __init__(self, holds):
+        super().__init__([0] * 6, None)
+        self.holds = list(holds)
+        self.grip = 38.0
+
+    def gripper(self, value, stop=None):
+        super().gripper(value, stop)
+        self.grip = (20.0 if (self.holds.pop(0) if self.holds else True) else 11.0) if value < 20 else value
+
+    def joints(self):
+        return {"gripper.pos": self.grip}
+
+
+def test_missed_pick_is_retried_once(monkeypatch):
+    taught(monkeypatch)
+    ex = executors.ScriptedExecutor(robot=GripArm([False, True, True, True]))
+    ex.execute({"instruction": "x", "shuffle": "swap_lr"}, executors.threading.Event())
+    assert [v for k, v in ex.robot.path if k == "grip"].count(shuffle_math.GRIP_CLOSE) == 4
+
+
+def test_twice_missed_pick_stops_before_placing(monkeypatch):
+    taught(monkeypatch)
+    ex = executors.ScriptedExecutor(robot=GripArm([False, False]))
+    with pytest.raises(executors.RobotError) as e:
+        ex.execute({"instruction": "x", "shuffle": "swap_lr"}, executors.threading.Event())
+    assert e.value.code == "grasp_missed" and "slot 1" in str(e.value)
+    moved_to = [t for k, t in ex.robot.path if k == "move"]
+    assert all(t.get("shoulder_pan.pos") != float(SCRIPT_POSES.index("down_s4")) for t in moved_to)  # never went to place

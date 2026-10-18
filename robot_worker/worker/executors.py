@@ -299,6 +299,15 @@ class ScriptedExecutor:
         except Exception:  # noqa: BLE001
             return None
 
+    def _holding(self) -> bool:
+        """The follower's gripper reading tells a keyring from nothing: ~19-23 on a keycap, ~11 empty."""
+        from .motion_guard import HOLD_LO
+
+        try:
+            return self.robot.joints()["gripper.pos"] >= HOLD_LO
+        except Exception:  # noqa: BLE001
+            return True  # can't read it: don't block the move (the camera checks the result)
+
     def _scripted_shuffle(self, spec: dict, stop: threading.Event, camera: bool) -> None:
         """Pick-and-place through taught poses. With the camera calibrated: check the row first,
         and line up each pick with where the keyring really is."""
@@ -312,7 +321,10 @@ class ScriptedExecutor:
         # closes the gripper itself, so poses only move the arm joints.
         poses = {k: {j: v for j, v in p.items() if j != GRIPPER} for k, p in data["poses"].items()}
         start = list(spec.get("start") or DEFAULT_START)
-        cal = load_calibration(data) if camera else {}
+        # Off by default: with the current camera framing the corrections made picks worse (slot 3
+        # sits at the image edge, slot 4 is out of view). Turn on once the camera sees all 4 slots.
+        use_cam_picks = camera and os.getenv("PICK_CAMERA_CORRECTION", "0") == "1"
+        cal = load_calibration(data) if use_cam_picks else {}
         slope = None
         if cal:
             try:
@@ -352,6 +364,16 @@ class ScriptedExecutor:
             move(above)
             move(down)
             grip(GRIP_CLOSE, 0.4)
+            if not self._holding():
+                # Missed: open, try once more from the same spot, then stop before placing so a
+                # missed keyring is never knocked by the next move.
+                grip(GRIP_OPEN, 0.3)
+                grip(GRIP_CLOSE, 0.4)
+                if not self._holding():
+                    grip(GRIP_OPEN, 0.3)
+                    move(above)
+                    move(poses["home"])
+                    raise RobotError("grasp_missed", f"could not pick the {obj} from slot {a}")
             move(above)
             move(poses[f"above_s{b}"])
             move(poses[f"down_s{b}"])
