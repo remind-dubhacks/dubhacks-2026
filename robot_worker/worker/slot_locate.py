@@ -12,7 +12,10 @@ from __future__ import annotations
 
 import os
 
-MAX_CORRECTION_DEG = float(os.getenv("PICK_MAX_CORRECTION_DEG", "6"))
+MAX_CORRECTION_DEG = float(os.getenv("PICK_MAX_CORRECTION_DEG", "3"))
+# A keyring cut off by the image edge has a biased centre: no correction there (first arm test:
+# the purple block at x~0.10 read 6 deg off and the pick missed).
+EDGE = float(os.getenv("PICK_EDGE_MARGIN", "0.15"))
 MIN_SHIFT = float(os.getenv("PICK_MIN_SHIFT", "0.01"))  # ignore image shifts under 1% of the width
 
 
@@ -33,7 +36,7 @@ def fit(ref_x: dict[int, float], pans: dict[int, float]) -> tuple[float, float]:
 
 def pan_correction(x_seen: float, slot: int, ref_x: dict[int, float], slope: float) -> float:
     """Degrees to add to the slot's taught pan so the gripper lines up with what the camera sees."""
-    if slot not in ref_x:
+    if slot not in ref_x or not (EDGE <= x_seen <= 1 - EDGE) or not (EDGE <= ref_x[slot] <= 1 - EDGE):
         return 0.0
     dx = x_seen - ref_x[slot]
     if abs(dx) < MIN_SHIFT:

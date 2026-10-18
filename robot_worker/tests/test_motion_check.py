@@ -580,7 +580,8 @@ def test_pick_correction_follows_the_keyring_and_is_capped():
     assert slot_locate.pan_correction(0.755, 2, cal, slope) == 0.0 or abs(slot_locate.pan_correction(0.445, 2, cal, slope)) < 1e-9
     small = slot_locate.pan_correction(0.40, 2, cal, slope)  # keyring a bit toward slot 3
     assert 0 < small < slot_locate.MAX_CORRECTION_DEG
-    assert slot_locate.pan_correction(0.0, 1, cal, slope) == slot_locate.MAX_CORRECTION_DEG
+    assert slot_locate.pan_correction(0.20, 2, cal, slope) == slot_locate.MAX_CORRECTION_DEG  # far off: capped
+    assert slot_locate.pan_correction(0.05, 3, cal, slope) == 0.0  # cut off by the image edge: trust the pose
     assert slot_locate.pan_correction(0.5, 4, cal, slope) == 0.0  # slot 4 is out of view
 
 
@@ -610,7 +611,7 @@ def guided(monkeypatch, positions):
 
 
 def test_off_center_keyring_is_picked_where_it_really_is(monkeypatch):
-    ex = guided(monkeypatch, {"black": (0.70, 900), "white": (0.44, 900), "purple": (0.12, 900)})
+    ex = guided(monkeypatch, {"black": (0.72, 900), "white": (0.44, 900), "purple": (0.12, 900)})
     ex.execute({"instruction": "x", "shuffle": "swap_lr"}, executors.threading.Event())
     first = ex.corrections[0]
     assert first["slot"] == 1 and first["object"] == "black" and first["panDeg"] > 0
