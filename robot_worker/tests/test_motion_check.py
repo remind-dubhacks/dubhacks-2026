@@ -18,7 +18,9 @@ from worker.shuffle_math import SHUFFLES, MoveError, apply_moves, expected_end, 
 
 ROOT = Path(__file__).resolve().parent.parent
 FIX = Path(__file__).parent / "fixtures" / "row"
-DATASET = Path.home() / ".cache/huggingface/lerobot/remind/remind-shuffle"
+# The recordings the motion limits were built from (scripts/build_motion_limits.py --repo ...).
+LIMITS_SOURCE = json.loads((Path(__file__).resolve().parent.parent / "motion_limits.json").read_text())["source"]["dataset"]
+DATASET = Path.home() / ".cache/huggingface/lerobot" / LIMITS_SOURCE
 recorded = pytest.mark.skipif(not (DATASET / "data").exists(), reason="recorded dataset not on this machine")
 OBJECTS = ["black", "white", "purple"]
 
@@ -414,7 +416,7 @@ def test_instructions_match_the_training_data_word_for_word():
 
     tasks = set(pd.read_parquet(DATASET / "meta/tasks.parquet").index)
     assert {s.instruction for s in SHUFFLES.values()} == tasks
-    assert json.loads((ROOT / "motion_limits.json").read_text())["source"]["dataset"] == "remind/remind-shuffle"
+    assert LIMITS_SOURCE.startswith("remind/remind-shuffle")
 
 
 # ---------------------------------------------------------------- hands in the workspace
@@ -683,3 +685,8 @@ def test_spot_check_knows_each_keyrings_shape():
     ref = {1: (0.8627, 0.1972), 2: (0.6166, 0.2048), 3: (0.3446, 0.4367)}
     after = {"purple": (0.8627, 0.1972 + (0.4367 - 0.201)), "white": (0.6166, 0.2048), "black": (0.3446, 0.201)}
     assert slot_locate.spot_problems(after, ["purple", "white", "black", None], ref) == []
+
+
+def test_demo_can_limit_the_robot_to_verified_shuffles(monkeypatch):
+    monkeypatch.setenv("ROBOT_SHUFFLES", "swap_lr,swap_lm")
+    assert set(shuffle_math.allowlist()) == {("shuffle", "swap_lr"), ("shuffle", "swap_lm")}

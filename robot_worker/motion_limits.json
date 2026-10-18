@@ -1,8 +1,8 @@
 {
   "source": {
-    "dataset": "remind/remind-shuffle",
+    "dataset": "remind/remind-shuffle-v2",
     "episodes": 60,
-    "frames": 60594
+    "frames": 62864
   },
   "units": "degrees for arm joints, 0-100 for the gripper",
   "joints": [
@@ -41,36 +41,36 @@
   },
   "envelope": {
     "shoulder_pan": [
-      -35.27,
-      57.25
+      -30.97,
+      48.64
     ],
     "shoulder_lift": [
       -101.53,
-      57.6
+      50.84
     ],
     "elbow_flex": [
-      -53.39,
-      82.31
+      -43.1,
+      58.75
     ],
     "wrist_flex": [
-      44.42,
+      35.54,
       101.84
     ],
     "wrist_roll": [
-      4.9,
-      123.71
+      -5.47,
+      126.88
     ],
     "gripper": [
       2.0,
-      46.55
+      43.79
     ]
   },
   "step": {
-    "shoulder_pan": 6.33,
-    "shoulder_lift": 8.97,
-    "elbow_flex": 6.13,
-    "wrist_flex": 4.88,
-    "wrist_roll": 5.93,
-    "gripper": 7.56
+    "shoulder_pan": 4.62,
+    "shoulder_lift": 5.8,
+    "elbow_flex": 4.48,
+    "wrist_flex": 5.01,
+    "wrist_roll": 5.7,
+    "gripper": 7.06
   }
 }
