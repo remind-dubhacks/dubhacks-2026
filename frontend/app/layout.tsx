@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "ReMind",
-  description: "A caregiver-supervised activity companion",
+  title: "ReMind | Memory Care",
+  description: "A caregiver station for resident activity, memory care, and care coordination.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
