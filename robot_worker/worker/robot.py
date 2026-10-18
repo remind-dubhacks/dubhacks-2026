@@ -139,7 +139,7 @@ class SO101:
     def joints(self) -> dict[str, float]:
         """Motor positions straight from the bus: a slow or dropped camera frame must never stop
         the arm (get_observation() would read every camera too)."""
-        pos = self.robot.bus.sync_read("Present_Position")
+        pos = self.robot.bus.sync_read("Present_Position", num_retry=5)
         return {j: float(pos[j.removesuffix(".pos")]) for j in JOINTS}
 
     def torque(self, on: bool) -> None:
