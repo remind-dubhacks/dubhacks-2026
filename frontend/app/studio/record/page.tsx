@@ -112,6 +112,8 @@ export default function RecordPage() {
       <div className={`rec-phase ${phase.tone}`}>
         <div className="rec-label">{phase.label}</div>
         {left !== null && <div className="rec-count">{left}</div>}
+        {phase.tone === "go" && <div className="rec-hint">Done with the moves? Rest the arm and wait. It saves automatically.</div>}
+        {phase.tone === "reset" && <div className="rec-hint">Put the keyrings back to START. Nothing to press.</div>}
       </div>
 
       {(() => {
@@ -156,7 +158,18 @@ export default function RecordPage() {
             catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
           }}>Clear gripper fault</button>
         )}
-        <button className="stop huge" onClick={() => { claimVoice(true); studio.stop().catch(() => {}); if (campaign?.running) studio.campaignAction("pause").catch(() => {}); }}>Stop</button>
+        <button
+          className="stop huge"
+          onClick={() => {
+            const recordingNow = phase.tone === "go" || phase.tone === "reset";
+            if (recordingNow && !confirm("Emergency stop?\n\nThis DISCARDS the episode in progress. Episodes end and save automatically; you never need Stop to finish one.")) return;
+            claimVoice(true);
+            studio.stop().catch(() => {});
+            if (campaign?.running) studio.campaignAction("pause").catch(() => {});
+          }}
+        >
+          {phase.tone === "go" || phase.tone === "reset" ? "Emergency stop (discards episode)" : "Stop"}
+        </button>
       </div>
 
       <StudioVoice

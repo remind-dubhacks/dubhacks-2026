@@ -212,3 +212,4 @@ button.huge { font-size: 1.8rem; padding: 22px 48px; min-width: 200px; }
 .rec-lineup { margin-top: 6px; }
 .rec-lineup-label { font-weight: 800; min-width: 64px; }
 .rec-lineup.end.focus .badge { background: #2f6b4f; color: #fff; font-size: 1.15rem; padding: 6px 14px; }
+.rec-hint { font-size: 1.2rem; margin-top: 8px; opacity: 0.95; }
