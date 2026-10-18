@@ -2,6 +2,7 @@
 import asyncio
 import json
 import threading
+from pathlib import Path
 
 import websockets
 from fastapi.testclient import TestClient
@@ -20,13 +21,14 @@ def run(state, name, args=None):
 def test_faces_flow():
     s = GameState()
     r = run(s, "start_game", {"game_id": "faces"})
-    assert r["ok"] and r["person"] == "Elvis Presley" and r["of"] == 3
+    assert r["ok"] and r["person"] == "Elvis Presley" and r["of"] == len(s.items) == 4
     assert s.screen == {"kind": "photo", "photo": "/games/faces/elvis.jpg"}
     run(s, "reveal")
     assert s.screen["kind"] == "photo_caption" and s.screen["caption"] == "This is Elvis Presley."
     run(s, "next_item")
-    assert s.screen["photo"] == faces.ITEMS[1]["photo"]
-    run(s, "next_item")
+    assert s.screen["photo"] == s.items[1]["photo"]
+    for _ in range(len(s.items) - 2):
+        run(s, "next_item")
     r = run(s, "next_item")
     assert r["finished"] and s.screen == {"kind": "rest"} and s.phase == "complete"
 
@@ -47,13 +49,48 @@ def test_proverbs_fit_message_limit():
 def test_sounds_play_and_replay():
     s = GameState()
     r = run(s, "start_game", {"game_id": "sounds"})
-    assert r["answer"] == sounds.ITEMS[0]["answer"]
-    assert s.sound["src"] == sounds.ITEMS[0]["src"] and s.screen["kind"] == "message"
+    assert r["answer"] == s.items[0]["answer"]
+    assert s.sound["src"] == s.items[0]["src"] and s.screen["kind"] == "message"
     first = s.sound["id"]
     run(s, "play_sound")
     assert s.sound["id"] == first + 1
     run(s, "next_item")
-    assert s.sound["src"] == sounds.ITEMS[1]["src"]
+    assert s.sound["src"] == s.items[1]["src"]
+
+
+def test_no_alarming_sounds_or_removed_faces():
+    srcs = [i["src"] for i in sounds.ITEMS] + [i["photo"] for i in faces.ITEMS]
+    assert not [x for x in srcs if any(bad in x for bad in ("train", "dog", "bark", "monroe"))]
+    public = Path(__file__).resolve().parents[2] / "frontend" / "public"
+    assert all((public / x.lstrip("/")).is_file() for x in srcs)
+
+
+def test_calm_defaults_without_a_profile():
+    s = GameState()
+    run(s, "start_game", {"game_id": "sounds"})
+    assert [i["id"] for i in s.items] == [i["id"] for i in sounds.ITEMS[:4]]
+    assert s.items[0]["id"] == "birds"
+
+
+def test_profile_and_memories_pick_the_items():
+    s = GameState(profile={"interests": ["fishing", "big band music"], "lifeStory": ["Grew up by the lake."]})
+    r = run(s, "start_game", {"game_id": "sounds"})
+    assert s.items[0]["id"] == "ocean_waves" and "why" in r
+    s = GameState(profile={"interests": ["classic movie stars", "Hollywood musicals"]})
+    run(s, "start_game", {"game_id": "faces"})
+    assert all(set(i["why"]) & {"movie", "hollywood", "movie star"} for i in s.items)
+    s = GameState(memories=["She was a nurse in the army during the war."])
+    run(s, "start_game", {"game_id": "faces"})
+    assert s.items[0]["id"] in {"kennedy", "reagan", "eisenhower", "roosevelt", "churchill"}
+
+
+def test_avoid_topics_are_never_picked():
+    s = GameState(profile={"interests": ["church hymns"], "avoidTopics": ["going to church since her husband died"]})
+    run(s, "start_game", {"game_id": "sounds"})
+    assert "church_bells" not in [i["id"] for i in s.items]
+    s = GameState(profile={"avoidTopics": ["the war"]})
+    run(s, "start_game", {"game_id": "faces"})
+    assert not [i for i in s.items if "war" in i["tags"]]
 
 
 def test_play_sound_only_in_sounds_game():

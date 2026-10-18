@@ -228,6 +228,7 @@ async def run(ws: WebSocket) -> None:
     if up is None:
         return
     assistant_id = getattr(up, "assistant_id", None)  # this patient's own memory; fixed for the whole call
+    state.profile, state.memories = profile, list(getattr(up, "memories", None) or [])  # pick the faces and sounds
 
     def remember(fact: str) -> dict:
         fact = fact.strip()[:300]
