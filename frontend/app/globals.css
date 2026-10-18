@@ -167,3 +167,8 @@ button.start { width: 100%; min-height: 110px; font-size: 2rem; margin: 16px 0; 
 button.big { font-size: 1.3rem; padding: 18px 28px; }
 textarea { font: inherit; font-size: 15px; width: 100%; padding: 8px; border-radius: 10px; border: 2px solid var(--border); background: var(--surface); color: var(--text); }
 .table input { font-size: 15px; }
+
+/* Voice / Chat toggle */
+.seg { display: inline-flex; background: #ece5da; border-radius: 999px; padding: 4px; margin: 8px 0; }
+.seg button { border: 0; background: transparent; min-height: 44px; padding: 8px 22px; border-radius: 999px; font-size: 1.1rem; }
+.seg button.active { background: var(--accent); color: var(--accent-text); }

@@ -28,7 +28,10 @@ export default function Voice() {
   const [tts, setTts] = useState(false); // ElevenLabs available
   const ttsRef = useRef(false);
   const [liveOk, setLiveOk] = useState(false); // Gemini Live available on the backend
-  const [classic, setClassic] = useState(false); // user chose the older Chrome-speech + ElevenLabs mode
+  const [mode, setMode] = useState<"voice" | "chat">("voice");
+  const [readAloud, setReadAloud] = useState(false); // chat mode: speak replies too
+  const modeRef = useRef<"voice" | "chat">("voice");
+  const readAllowed = useRef(false);
   const liveRef = useRef<LiveVoice | null>(null);
   const aiBuf = useRef("");
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -37,6 +40,9 @@ export default function Voice() {
   const listeningRef = useRef(false);
   const speakingRef = useRef(false);
 
+  useEffect(() => {
+    try { const m = localStorage.getItem("remind.mode"); if (m === "chat" || m === "voice") { setMode(m); modeRef.current = m; } } catch { /* ignore */ }
+  }, []);
   useEffect(() => {
     voiceStatus().then((st) => { setLiveOk(st.live); setProvider(st.provider); setTts(st.tts); ttsRef.current = st.tts; });
   }, []);
@@ -92,7 +98,7 @@ export default function Voice() {
       const r = await voiceTurn(sid, text, []);
       setCalls(r.toolCalls); setState(r.state);
       setLog((l) => [...l, { role: "ai", text: r.reply, tools: r.toolCalls.map((c) => c.name), at: Date.now() }]);
-      speak(r.reply);
+      if (modeRef.current === "voice" || readAllowed.current) speak(r.reply);
     } catch {
       setErr("Can't reach the backend (is it running on :8000?)");
     } finally {
@@ -150,8 +156,16 @@ export default function Voice() {
     }
   }
 
+  function switchMode(m: "voice" | "chat") {
+    if (m === mode) return;
+    if (started) endConversation();
+    window.speechSynthesis?.cancel(); audioRef.current?.pause();
+    setMode(m); modeRef.current = m;
+    try { localStorage.setItem("remind.mode", m); } catch { /* ignore */ }
+  }
+
   function startConversation() {
-    if (liveOk && !classic) return void startLive();
+    if (liveOk) return void startLive();
     setStarted(true);
     listeningRef.current = true; setListening(true);
     setLog((l) => [...l, { role: "ai", text: GREETING, at: Date.now() }]);
@@ -176,24 +190,28 @@ export default function Voice() {
   return (
     <main className="play voice">
       <h1>ReMind</h1>
-      <p className="small">{liveOk && !classic ? "Live mode: Gemini Live, always listening, you can interrupt" : hasSR ? `Brain: ${provider === "gemini" ? "Gemini" : "keyword rules (set GEMINI_API_KEY)"} · Voice: ${tts ? "ElevenLabs" : "browser (set ELEVENLABS_API_KEY)"}` : "This browser has no speech recognition (use Chrome); typing works."}</p>
+      <div className="seg" role="tablist" aria-label="Mode">
+        <button role="tab" aria-selected={mode === "voice"} className={mode === "voice" ? "active" : ""} onClick={() => switchMode("voice")}>🎙️ Voice</button>
+        <button role="tab" aria-selected={mode === "chat"} className={mode === "chat" ? "active" : ""} onClick={() => switchMode("chat")}>💬 Chat</button>
+      </div>
+      {mode === "voice" && <p className="small">{liveOk ? "Live mode: Gemini Live, always listening, you can interrupt" : hasSR ? `Brain: ${provider === "gemini" ? "Gemini" : "keyword rules (set GEMINI_API_KEY)"} · Voice: ${tts ? "ElevenLabs" : "browser (set ELEVENLABS_API_KEY)"}` : "This browser has no speech recognition (use Chrome); try Chat mode."}</p>}
+      {mode === "chat" && (
+        <p className="small">Type to talk to ReMind. <label><input type="checkbox" checked={readAloud} onChange={(e) => { setReadAloud(e.target.checked); readAllowed.current = e.target.checked; }} /> Read replies aloud</label></p>
+      )}
 
-      {!started ? (
-        <button className="primary big start" onClick={startConversation} disabled={!hasSR && !(liveOk && !classic)}>🎙️ Start conversation</button>
+      {mode === "voice" && (!started ? (
+        <button className="primary big start" onClick={startConversation} disabled={!hasSR && !(liveOk)}>🎙️ Start conversation</button>
       ) : (
         <div className="row">
           <span className={`badge ${listening && !busy ? "on live-dot" : ""}`}>{busy ? "Thinking…" : "Listening…"}</span>
           <button className="stop" onClick={endConversation}>Stop</button>
         </div>
-      )}
-      {liveOk && !started && (
-        <p className="small"><label><input type="checkbox" checked={classic} onChange={(e) => setClassic(e.target.checked)} /> Classic mode (Chrome speech + ElevenLabs voice)</label></p>
-      )}
-      {heard && <p className="heard">“{heard}”</p>}
+      ))}
+      {mode === "voice" && heard && <p className="heard">“{heard}”</p>}
 
       <h2>Conversation</h2>
       <div className="chat" aria-live="polite">
-        {log.length === 0 && <p className="small">Nothing yet. Press Start conversation.</p>}
+        {log.length === 0 && <p className="small">{mode === "chat" ? "Nothing yet. Type “hello” or “let's play the ordering game”." : "Nothing yet. Press Start conversation."}</p>}
         {log.map((m, i) => (
           <div key={i} className={`bubble ${m.role}`}>
             <span className="who">{m.role === "you" ? "You" : "ReMind"}</span>
@@ -205,7 +223,7 @@ export default function Voice() {
       </div>
 
       <form className="row" style={{ marginTop: 16 }} onSubmit={(e) => { e.preventDefault(); send(typed); setTyped(""); }}>
-        <input aria-label="Type instead" placeholder="Or type what you'd say…" value={typed} onChange={(e) => setTyped(e.target.value)}
+        <input aria-label="Type instead" placeholder={mode === "chat" ? "Type a message…" : "Or type what you'd say…"} autoFocus={mode === "chat"} value={typed} onChange={(e) => setTyped(e.target.value)}
           style={{ flex: 1, font: "inherit", padding: 14, borderRadius: 16, border: "2px solid var(--border)" }} />
         <button type="submit">Send</button>
       </form>
