@@ -56,6 +56,22 @@ OBJECTS: dict[str, dict] = {
             "Some people collect keychains from places they visit. Did you ever bring one home from somewhere?",
         ],
     },
+    "black keycap": {
+        "short": "black one",
+        "use": "This comes from a keyboard. What would you like to type?",
+        "memories": [
+            "Did you ever use a typewriter or a computer keyboard?",
+            "Was there a desk or a room where you liked to write?",
+        ],
+    },
+    "purple keycap": {
+        "short": "purple one",
+        "use": "What does this colour remind you of?",
+        "memories": [
+            "Is there a flower or a colour you have always loved?",
+            "Did you have a favourite piece of clothing in a colour like this?",
+        ],
+    },
     "white keycap": {
         "short": "keycap",
         "use": "This comes from a keyboard. What would you like to type?",

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { LiveVoice } from "@/lib/liveVoice";
-import { fetchTools, fetchTts, voiceReset, voiceStatus, voiceTurn, type ToolCall, type ToolInfo, type VoiceState } from "@/lib/voice";
+import { fetchTools, fetchTts, voiceReset, voiceStatus, voiceTurn, voiceWatch, type ToolCall, type ToolInfo, type VoiceState } from "@/lib/voice";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const SR: any = typeof window !== "undefined" ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition : null;
@@ -108,6 +108,34 @@ export default function Voice() {
       setBusy(false);
     }
   }, [sid, speak]);
+
+  // Live table watching (Remember the Order): the camera follows the row while the person restores it,
+  // and the robot's moves report back here. The backend decides when it's a good moment to speak.
+  const watching = !!state?.exercise?.watching || state?.exercise?.robot?.status === "moving";
+  const [tableNote, setTableNote] = useState("");
+  useEffect(() => {
+    if (!watching) return;
+    let stop = false;
+    const tick = async () => {
+      if (stop || speakingRef.current) return;
+      try {
+        const r = await voiceWatch(sid);
+        if (stop) return;
+        setState(r.state);
+        const lifted = r.events.find((e) => e.kind === "lifted");
+        if (r.camera === false) setTableNote("Camera can't see the table");
+        else if (lifted) setTableNote(`Moving: ${lifted.obj}`);
+        else if (r.state.exercise?.robot?.status === "moving") setTableNote("Robot is moving. Hands on your lap, please.");
+        else if (r.events.length) setTableNote("");
+        if (r.say) {
+          setLog((l) => [...l, { role: "ai", text: r.say!, tools: ["watch_table"], at: Date.now() }]);
+          speak(r.say);
+        }
+      } catch { /* backend busy or unreachable: try again next tick */ }
+    };
+    const id = setInterval(tick, 1200);
+    return () => { stop = true; clearInterval(id); };
+  }, [watching, sid, speak]);
 
   useEffect(() => {
     if (!SR) { setHasSR(false); return; }
@@ -255,6 +283,7 @@ export default function Voice() {
         <button type="submit">Send</button>
       </form>
 
+      {watching && <p className="status">👀 Watching the table{tableNote ? ` · ${tableNote}` : ""}</p>}
       {state?.helpRequested && <p className="warn">⚠️ Caregiver alerted: {state.alerts.join("; ")}</p>}
       <details className="demo">
         <summary>Last tool calls (debug)</summary>

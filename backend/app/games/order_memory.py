@@ -41,14 +41,25 @@ def order_from_text(text: str, objects: list[str]) -> list[str]:
     t = text.lower()
     hits = []
     for o in objects:
-        idx = [m.start() for name in {o, OBJECTS[o]["short"]} for m in re.finditer(re.escape(name), t)]
+        others = [x for x in objects if x != o]
+        # A short name or colour word counts only if it can't also be part of another object's name
+        # ("keycap" alone is ambiguous once there are three keycaps; "black" is not).
+        aliases = {o} | {
+            a for a in (OBJECTS[o]["short"], o.split()[0])
+            if not any(a in x or a in OBJECTS[x]["short"] for x in others)
+        }
+        idx = [m.start() for name in aliases for m in re.finditer(rf"\b{re.escape(name)}\b", t)]
         if idx:
             hits.append((min(idx), o))
     return [o for _, o in sorted(hits)]
 
 
 class OrderMemory:
-    def __init__(self, objects: list[str] | None = None, max_rounds: int = 3, seed: int | None = None) -> None:
+    def __init__(self, objects: list[str] | None = None, max_rounds: int = 3, seed: int | None = None,
+                 fixed_start: list[str] | None = None) -> None:
+        # fixed_start: the robot's trained skill only knows one start layout, so every round begins there.
+        self.fixed_start = [o for o in fixed_start if o in OBJECTS] if fixed_start else None
+        objects = self.fixed_start or objects
         self.pool = [o for o in (objects or ["lipstick", "blue keychain", "white keycap"]) if o in OBJECTS]
         if len(self.pool) < 2:
             raise ValueError("need at least two known objects")
@@ -71,6 +82,10 @@ class OrderMemory:
         self.placed: list[int] = []  # spots already right this round
         self.used_choice = False
         self.revealed = False  # avoid repeating the same shuffle twice in a row
+        self.offered_show = False  # the robot offered to show the answer
+        self.shown_by_robot = False
+        if self.fixed_start:
+            self.level = max(LEVELS)  # the robot skill works on a row of three
 
     def short(self, o: str) -> str:
         return OBJECTS[o]["short"]
@@ -87,7 +102,7 @@ class OrderMemory:
     def start(self) -> Step:
         self.round += 1
         n = min(LEVELS[self.level], len(self.pool))
-        self.original = self.rng.sample(self.pool, n)
+        self.original = list(self.fixed_start) if self.fixed_start else self.rng.sample(self.pool, n)
         self.current = list(self.original)
         self.first_left = self.first_left or self.original[0]
         self.help, self.phase = 0, "study"
@@ -130,6 +145,9 @@ class OrderMemory:
         if sorted(pattern) != list(range(len(self.original))) or list(pattern) == list(range(len(self.original))):
             raise ValueError("pattern must be a real mix of the row")
         self.last_pattern = tuple(pattern)
+        from .shuffles import shuffle_id
+
+        self.last_shuffle_id = shuffle_id(tuple(pattern)) if len(pattern) == 3 else None
         new = [self.original[i] for i in pattern]
         moves = [{"object": o, "from": self.spots[self.original.index(o)], "to": self.spots[i]} for i, o in enumerate(new) if new[i] != self.original[i]]
         self.current, self.phase = new, "shuffle"
@@ -138,6 +156,7 @@ class OrderMemory:
     def after_shuffle(self) -> Step:
         self.phase, self.asked_words = "restore", False
         self.guide, self.placed, self.used_choice, self.revealed = None, [], False, False
+        self.offered_show, self.shown_by_robot = False, False
         return Step(
             say="All mixed up! Can you put them back the way they were, from left to right? Take your time, and tell me when you're done.",
             expect="done",
@@ -216,6 +235,64 @@ class OrderMemory:
         self.guide = None
         self.log.append(OrderRound(list(self.original), help=help_level))
         return self.reminisce(praise)
+
+    # ------------------------------------------------------------ live: reacting to the table
+
+    def _choice(self, i: int, wrong: str | None = None) -> Step:
+        want = self.original[i]
+        other = wrong if wrong and wrong != want else self.rng.choice([o for o in self.original if o != want])
+        pair = sorted([want, other], key=lambda _: self.rng.random())
+        self.used_choice = True
+        return Step(say=f"Let's look {at(self.spots[i])}. Was it the {pair[0]}, or the {pair[1]}?", expect="done", phase="restore", options=pair)
+
+    def first_unfinished(self) -> int | None:
+        wrong = [i for i in range(len(self.original)) if self.current[i] != self.original[i]]
+        return wrong[0] if wrong else None
+
+    def live(self, events: list[dict]) -> Step | None:
+        """React to TableWatch events (as dicts). Returns what to say now, or None to stay quiet."""
+        if self.phase != "restore":
+            return None
+        right = [e for e in events if e["kind"] == "placed" and e.get("right")]
+        for e in events:
+            if e["kind"] == "placed":
+                self.current[e["spot"]] = e["obj"]
+        if any(e["kind"] == "complete" for e in events):
+            if self.used_choice or self.offered_show:
+                return self._restored("There they are, just like before. Well done!")
+            return self._restored("That's exactly how they were. What a good memory!")
+        cue = next((e for e in events if e["kind"] in ("wrong_stays", "holding", "hesitate")), None)
+        if cue is None:
+            if right:  # a short "yes" for each right placement, nothing for a wrong one (yet)
+                said = " ".join(f"Yes, the {self.short(e['obj'])} goes {at(self.spots[e['spot']])}." for e in right)
+                return Step(say=said, expect="done", phase="restore")
+            return None
+        if cue["kind"] == "wrong_stays":
+            return self._choice(cue["spot"], wrong=cue["obj"])
+        if cue["kind"] == "holding":
+            i = self.original.index(cue["obj"])
+            others = [s for s in self.spots if s != self.spots[i]]
+            pair = sorted([self.spots[i], self.rng.choice(others)], key=lambda _: self.rng.random())
+            self.used_choice = True
+            return Step(say=f"Where was the {self.short(cue['obj'])} at the start? {at(pair[0]).capitalize()}, or {at(pair[1])}?",
+                        expect="done", phase="restore", options=pair)
+        level = cue.get("level", 1)
+        i = self.first_unfinished()
+        if i is None:
+            return None
+        if level == 1:
+            return Step(say=f"Take your time. Which one do you think was {at(self.spots[i])}?", expect="done", phase="restore")
+        if level == 2:
+            return self._choice(i, wrong=self.current[i])
+        self.offered_show = True
+        return Step(say="Would you like the robot to show us? Just say yes, or keep going if you'd like to finish it yourself.",
+                    expect="talk", phase="restore", options=["yes", "keep going"])
+
+    def robot_showed(self) -> Step:
+        """The robot put the row back. Say it together once, which helps it stick."""
+        self.revealed, self.shown_by_robot = True, True
+        chant = ", ".join(self.short(o) for o in self.original)
+        return self._restored(f"There, just like before. Let's say them together: {chant}.")
 
     # ------------------------------------------------------------ 6. memory (optional)
 
