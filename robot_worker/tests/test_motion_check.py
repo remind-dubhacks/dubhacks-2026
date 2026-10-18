@@ -13,7 +13,7 @@ import pytest
 
 from worker import executors, shuffle_math
 from worker.motion_guard import JOINTS, ActionGuard, GraspMonitor, GuardError, Limits, motors_ok
-from worker.row_check import read_row
+from worker.row_check import find, read_row
 from worker.shuffle_math import SHUFFLES, MoveError, apply_moves, expected_end, permutation, shuffle_for, verdict
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -794,3 +794,11 @@ def test_hand_pause_is_reported_as_live_events_and_laptop_stays_quiet(limits, mo
     kinds = [e["kind"] for e in events]
     assert "paused_for_hand" in kinds and "resumed" in kinds and "checked" in kinds
     assert said == []  # the companion speaks instead
+
+
+
+def test_purple_block_is_found_on_the_wooden_table_and_a_sleeve_is_ignored():
+    """Cooler light on the wooden table, with a bluish sleeve at the right edge of the frame."""
+    found = find(cv2.imread(str(FIX / "wood_start.jpg")))
+    assert "purple" in found and 0.2 < found["purple"][0] < 0.35  # the block, not the sleeve at x ~0.97
+    assert "black" in found

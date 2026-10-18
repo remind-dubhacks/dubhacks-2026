@@ -19,7 +19,9 @@ import numpy as np
 RANGES: dict[str, list[tuple[tuple[int, int, int], tuple[int, int, int]]]] = {
     "black": [((0, 0, 0), (179, 255, 55))],
     "white": [((18, 22, 85), (36, 90, 200))],
-    "purple": [((108, 25, 50), (145, 255, 230))],
+    # 108-145: the purple block on the white table. 95-107 with real saturation: the same block under cooler
+    # light on the wooden table (the wood there sits at a similar hue but saturation under 25).
+    "purple": [((108, 25, 50), (145, 255, 230)), ((95, 50, 60), (107, 255, 230))],
 }
 MIN_AREA = 250  # pixels at 640 px wide
 UNION = {"purple"}
@@ -45,6 +47,11 @@ def _find(frame_bgr: np.ndarray) -> dict[str, tuple[float, int, float]]:
     hsv = cv2.cvtColor(cv2.GaussianBlur(img, (5, 5), 0), cv2.COLOR_BGR2HSV)
     k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
     out: dict[str, tuple[float, int, float]] = {}
+    # Where the purple block is (dilated): its pale, bluish sides must never count as the white keycap.
+    pm = np.zeros(hsv.shape[:2], np.uint8)
+    for lo, hi in RANGES["purple"]:
+        pm |= cv2.inRange(hsv, np.array(lo, np.uint8), np.array(hi, np.uint8))
+    pm = cv2.dilate(cv2.morphologyEx(pm, cv2.MORPH_OPEN, k), np.ones((25, 25), np.uint8))
     for name, ranges in RANGES.items():
         m = np.zeros(hsv.shape[:2], np.uint8)
         for lo, hi in ranges:
@@ -63,7 +70,16 @@ def _find(frame_bgr: np.ndarray) -> dict[str, tuple[float, int, float]]:
               and cents[i][1] >= TOP_IGNORE * H
               # solid like a keycap, not a thin cable loop
               and stats[i, cv2.CC_STAT_AREA] >= 0.45 * stats[i, cv2.CC_STAT_WIDTH] * stats[i, cv2.CC_STAT_HEIGHT]
-              ] if name in SHAPED else list(range(1, n))
+              # sleeves and hands reach in from the right and bottom edges
+              and stats[i, cv2.CC_STAT_LEFT] + stats[i, cv2.CC_STAT_WIDTH] < img.shape[1] - 2
+              and stats[i, cv2.CC_STAT_TOP] + stats[i, cv2.CC_STAT_HEIGHT] < H - 2
+              and (name != "white" or not pm[int(cents[i][1]), int(cents[i][0])])
+              ] if name in SHAPED else [
+                  # the purple block: anything reaching the right or bottom edge is a sleeve or a hand (on the white
+                  # table the block itself can sit cut off at the left edge)
+                  i for i in range(1, n)
+                  if stats[i, cv2.CC_STAT_TOP] + stats[i, cv2.CC_STAT_HEIGHT] < H - 2
+                  and stats[i, cv2.CC_STAT_LEFT] + stats[i, cv2.CC_STAT_WIDTH] < img.shape[1] - 2]
         if not ok:
             continue
         best = max(ok, key=lambda i: stats[i, cv2.CC_STAT_AREA])
