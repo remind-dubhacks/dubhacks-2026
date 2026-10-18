@@ -127,6 +127,7 @@ def test_nudges_then_rest_and_session_record(monkeypatch):
         threading.Event().wait(0.05)
     monkeypatch.setattr(settings, "gemini_api_key", "test")
     monkeypatch.setattr(settings, "gemini_live_url", f"ws://127.0.0.1:{port[0]}")
+    monkeypatch.setattr(live, "transport", lambda: "gemini")  # direct Gemini is off during development; code kept
     monkeypatch.setattr(live, "NUDGE_AFTER_S", 0.1)
 
     with TestClient(main.app) as c:

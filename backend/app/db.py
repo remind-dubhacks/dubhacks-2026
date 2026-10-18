@@ -75,7 +75,8 @@ Store = MemoryStore | MongoStore
 
 async def connect() -> Store:
     if not settings.mongodb_uri:
-        log.warning("MONGODB_URI not set; using in-memory store (nothing persists)")
+        log.warning("MONGODB_URI not set; using in-memory store: residents, care-profile edits and sessions reset on "
+                    "every restart (patient memories stay in Backboard and are re-linked by name)")
         return MemoryStore()
     try:
         client = AsyncMongoClient(settings.mongodb_uri, serverSelectionTimeoutMS=3000, tz_aware=True)

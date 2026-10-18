@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from . import agent, robot_client
+from . import agent, robot_client, tasks
 from .catalog import ACTIONS, ACTIVITIES, OBJECTS, choice_labels
 from .config import settings
 from .db import Store, connect
@@ -82,7 +82,9 @@ def new_id() -> str:
 async def lifespan(app: FastAPI):
     app.state.store = await connect()
     await seed(app.state.store)
+    tasks.background(memory.provision(app.state.store))  # every resident gets their Backboard assistant
     yield
+    await tasks.drain()  # let an after-call memory digest finish before a --reload restart
 
 
 async def seed(store: Store) -> None:
@@ -173,7 +175,7 @@ async def health(request: Request):
         worker = await robot_client.health()
     except RobotWorkerError as e:
         worker = {"ready": False, "error": str(e)}
-    return {"ok": True, "persistent": store(request).persistent, "robot": worker}
+    return {"ok": True, "persistent": store(request).persistent, "memory": memory.enabled(), "robot": worker}
 
 
 @app.get("/api/activities")
@@ -188,8 +190,11 @@ async def list_participants(request: Request):
 
 @app.post("/api/participants")
 async def create_participant(body: ParticipantIn, request: Request):
-    doc = {"_id": new_id(), **body.model_dump(), "preferences": {}, "createdAt": now()}
-    return await store(request).insert("participants", doc)
+    s = store(request)
+    doc = await s.insert("participants", {"_id": new_id(), **body.model_dump(), "preferences": {}, "createdAt": now()})
+    if doc.get("consentFlags", {}).get("rememberPreferences"):
+        tasks.background(memory.ensure_assistant(s, dict(doc)))
+    return doc
 
 
 @app.get("/api/participants/{pid}")

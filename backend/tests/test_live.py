@@ -131,7 +131,15 @@ def finish(c, ws) -> None:
     wait_for(lambda: c.get("/api/voice/sessions").json())
 
 
+def direct_gemini(monkeypatch) -> None:
+    """The direct Gemini Live relay is switched off during development (live.transport), but its code is kept;
+    these tests force it on to keep that code working for when the fallback returns."""
+    from app.voice import live
+    monkeypatch.setattr(live, "transport", lambda: "gemini")
+
+
 def test_live_relay(monkeypatch):
+    direct_gemini(monkeypatch)
     received = []
     port = serve(fake_gemini, received)
     monkeypatch.setattr(settings, "gemini_api_key", "test")
@@ -173,17 +181,18 @@ def test_should_remind(monkeypatch):
     assert not should_remind(3, 0, [41, 12])
 
 
-def test_transport_choice(monkeypatch):
-    from app.voice.live import transport
-    monkeypatch.setattr(settings, "voice_transport", "")
-    assert transport() == "gemini"
-    monkeypatch.setattr(settings, "backboard_api_key", "k")
-    assert transport() == "backboard"
+def test_transport_is_backboard_only(monkeypatch):
+    from app.voice.live import available, transport
+    monkeypatch.setattr(settings, "gemini_api_key", "g")
+    assert transport() == "backboard" and not available()  # no Backboard key: no call, even with a Gemini key
     monkeypatch.setattr(settings, "voice_transport", "gemini")
-    assert transport() == "gemini"
+    assert transport() == "backboard"
+    monkeypatch.setattr(settings, "backboard_api_key", "k")
+    assert available()
 
 
 def test_live_relay_sends_reminder_without_turn_complete(monkeypatch):
+    direct_gemini(monkeypatch)
     received = []
     port = serve(fake_gemini, received)
     monkeypatch.setattr(settings, "gemini_api_key", "test")
@@ -201,6 +210,7 @@ def test_live_relay_sends_reminder_without_turn_complete(monkeypatch):
 def test_gemini_fallback_reads_memories_into_prompt(monkeypatch):
     """Direct Gemini: the care profile and recalled memories go into the prompt; nothing is written mid-call, and
     what the person said is digested afterwards."""
+    direct_gemini(monkeypatch)
     received, recalled, added, digested = [], [], [], []
     port = serve(fake_gemini, received)
     monkeypatch.setattr(settings, "gemini_api_key", "test")
@@ -302,36 +312,33 @@ def test_backboard_name_only_session_has_no_memory(monkeypatch):
 
 
 def test_backboard_first_session_creates_assistant(monkeypatch):
-    received, seeded = [], []
+    received, ensured = [], []
     port = serve(fake_backboard, received)
     use_backboard(monkeypatch, port)
 
     async def fake_ensure(store, participant, with_seed=True):
-        assert with_seed is False
+        ensured.append(with_seed)
         return "new1"
-
-    async def fake_seed(aid, profile):
-        seeded.append((aid, bool(profile)))
     monkeypatch.setattr(memory, "ensure_assistant", fake_ensure)
-    monkeypatch.setattr(memory, "seed", fake_seed)
 
     with TestClient(main.app) as c, c.websocket_connect("/api/voice/live?participantId=demo-rose&games=faces") as ws:
         collect(ws)
         finish(c, ws)
     assert received[0]["assistant_id"] == "new1" and received[0]["memory"] == "Readonly"
-    assert seeded == [("new1", True)]
+    assert ensured == [False]  # a new assistant is seeded in the background, so the call does not wait
 
 
-def test_backboard_refusal_falls_back_to_gemini(monkeypatch):
+def test_backboard_refusal_does_not_fall_back_to_gemini(monkeypatch):
+    """Backboard only: a refused session reports why, even with a Gemini key, and Gemini is never contacted."""
     bb_received, gem_received = [], []
     use_backboard(monkeypatch, serve(refusing_backboard, bb_received))
     monkeypatch.setattr(settings, "gemini_api_key", "test")
     monkeypatch.setattr(settings, "gemini_live_url", f"ws://127.0.0.1:{serve(fake_gemini, gem_received)}")
     with TestClient(main.app) as c, c.websocket_connect("/api/voice/live?name=Ann&games=faces") as ws:
-        got = collect(ws)
-        finish(c, ws)
-    assert bb_received and bb_received[0]["provider"] == "google"  # tried Backboard first
-    assert "setup" in gem_received[0] and not any(m["type"] == "error" for m in got)
+        msg = ws.receive_json()
+    assert bb_received and bb_received[0]["provider"] == "google"
+    assert msg["type"] == "error" and "insufficient_credits" in msg["message"]
+    assert gem_received == []
 
 
 def test_backboard_refusal_without_gemini_key_reports_why(monkeypatch):

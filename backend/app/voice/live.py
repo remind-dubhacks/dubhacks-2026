@@ -1,7 +1,8 @@
 """Live voice relay: continuous, interruptible speech-to-speech with tool calling.
 
-Browser <-> this server <-> Backboard Realtime -> Gemini Live (or Gemini Live directly; see VOICE_TRANSPORT and
-voice/upstreams.py). The server holds the API keys and runs the tools; the model never touches the robot directly.
+Browser <-> this server <-> Backboard Realtime -> Gemini Live. (Gemini Live directly is switched off during
+development, see transport() and connect_upstream(); the code stays in voice/upstreams.py.) The server holds the
+API keys and runs the tools; the model never touches the robot directly.
 Browser sends PCM16 mono 16 kHz; replies are PCM16 (24 kHz unless the provider says otherwise).
 Docs: https://ai.google.dev/gemini-api/docs/live, https://docs.backboard.io
 
@@ -19,6 +20,7 @@ from datetime import datetime, timezone
 from fastapi import WebSocket
 
 from ..config import settings
+from ..tasks import background
 from . import memory
 from .agent import GEMINI_DECLS, STOP_RE
 from .prompts.voice_system_prompt import VOICE_SYSTEM_PROMPT, render_profile
@@ -50,11 +52,14 @@ GAME_NAMES = {"faces": "famous faces", "proverbs": "sayings", "sounds": "sounds"
 
 
 def transport() -> str:
-    """backboard | gemini. VOICE_TRANSPORT wins; otherwise Backboard whenever its key is set."""
-    t = settings.voice_transport.strip().lower()
-    if t in ("backboard", "gemini"):
-        return t
-    return "backboard" if settings.backboard_api_key else "gemini"
+    """Always backboard during development. With direct Gemini back on: backboard | gemini, VOICE_TRANSPORT wins,
+    otherwise Backboard whenever its key is set."""
+    # DEV: Backboard only. Un-comment to allow VOICE_TRANSPORT=gemini and direct Gemini without a Backboard key.
+    # t = settings.voice_transport.strip().lower()
+    # if t in ("backboard", "gemini"):
+    #     return t
+    # return "backboard" if settings.backboard_api_key else "gemini"
+    return "backboard"
 
 
 def available() -> bool:
@@ -137,8 +142,6 @@ async def open_upstream(ws: WebSocket, name: str, games: list[str], participant:
     if transport() == "backboard":
         if can_remember and not assistant_id:
             assistant_id = await memory.ensure_assistant(ws.app.state.store, participant, with_seed=False)
-            if assistant_id:
-                background(memory.seed(assistant_id, profile))
         mode = "Readonly" if assistant_id else "off"
         return BackboardUpstream(backboard_setup(name, games, assistant_id=assistant_id, memory_mode=mode, profile=profile))
     return await gemini_upstream(name, games, participant)
@@ -151,8 +154,8 @@ async def gemini_upstream(name: str, games: list[str], participant: dict) -> Gem
 
 
 async def connect_upstream(ws: WebSocket, name: str, games: list[str], participant: dict):
-    """Connected upstream, or None after telling the browser why. If Backboard refuses (e.g. no credits for
-    realtime audio) and a Gemini key is set, the session carries on directly with Gemini instead."""
+    """Connected upstream, or None after telling the browser why (e.g. Backboard refused: no credits for realtime
+    audio). With the Gemini fallback back on, a refused Backboard session carries on directly with Gemini."""
     up = await open_upstream(ws, name, games, participant)
     try:
         await up.connect()
@@ -160,14 +163,15 @@ async def connect_upstream(ws: WebSocket, name: str, games: list[str], participa
     except Exception as e:  # noqa: BLE001
         log.warning("could not reach %s: %r", up.label, e)
         error = f"Could not reach {up.label}: {e}"[:300]
-    if isinstance(up, BackboardUpstream) and settings.gemini_api_key:
-        log.warning("falling back to Gemini Live directly (no new memories this session)")
-        up = await gemini_upstream(name, games, participant)
-        try:
-            await up.connect()
-            return up
-        except Exception as e:  # noqa: BLE001
-            error = f"Could not reach {up.label}: {type(e).__name__}"
+    # DEV: Backboard only. Un-comment to fall back to Gemini Live directly when Backboard refuses.
+    # if isinstance(up, BackboardUpstream) and settings.gemini_api_key:
+    #     log.warning("falling back to Gemini Live directly")
+    #     up = await gemini_upstream(name, games, participant)
+    #     try:
+    #         await up.connect()
+    #         return up
+    #     except Exception as e:
+    #         error = f"Could not reach {up.label}: {type(e).__name__}"
     await ws.send_json({"type": "error", "message": error})
     await ws.close()
     return None
@@ -317,6 +321,8 @@ async def run(ws: WebSocket) -> None:
         background(close_quietly(up))  # Backboard's stop handshake can take a moment; don't hold the handler
         if participant.get("consentFlags", {}).get("rememberPreferences"):
             background(memory.digest_session(participant.get("backboardAssistantId"), name, said))
+        else:
+            log.info("not saving memories: %s", "no resident picked" if not participant else "no consent to remember")
 
 
 async def close_quietly(up) -> None:
@@ -324,16 +330,6 @@ async def close_quietly(up) -> None:
         await up.close()
     except Exception as e:  # noqa: BLE001
         log.warning("closing %s: %r", up.label, e)
-
-
-_background: set[asyncio.Task] = set()
-
-
-def background(coro) -> None:
-    """Fire-and-forget (memory seeding), keeping a reference so the task is not garbage-collected mid-flight."""
-    task = asyncio.create_task(coro)
-    _background.add(task)
-    task.add_done_callback(_background.discard)
 
 
 async def load_participant(ws: WebSocket) -> dict:
