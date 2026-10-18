@@ -19,6 +19,7 @@ try:
         arm.move_to(P["above_s4"], stop, SPEED); arm.move_to(P["down_s4"], stop, SPEED)
         input("  -> Tam dat moc khoa DEN VAO GIUA 2 NGON KEP o o 4. Rut tay ra roi bam Enter...")
         arm.move_to(P["above_s4"], stop, SPEED); arm.move_to(P["home"], stop, SPEED)
+        arm.move_to(P.get("rest", P["home"]), stop, SPEED)  # out of the camera's view
         import cv2, json, os
         from worker.robot import POSES_FILE
         from worker.row_check import find_xy
@@ -38,12 +39,14 @@ try:
         else:
             print("  !! camera KHONG thay moc khoa o o 4: chinh camera roi chay lai.")
         input("  -> Lay moc khoa den ra khoi o 4 (o 4 de trong). Bam Enter...")
+        arm.move_to(P["home"], stop, SPEED)
     for n in (1, 2, 3):
         input(f"\n[O {n}] Lay moc khoa ra khoi o {n}. TAY RA KHOI BAN. Bam Enter: robot ha kep xuong o {n}...")
         arm.move_to(P[f"above_s{n}"], stop, SPEED); arm.move_to(P[f"down_s{n}"], stop, SPEED)
         input(f"  -> Dat moc khoa (o 1 den, o 2 trang, o 3 tim) VAO GIUA 2 NGON KEP, chinh giua.\n     Rut tay ra roi bam Enter...")
         arm.move_to(P[f"above_s{n}"], stop, SPEED)
     arm.move_to(P["home"], stop, SPEED)
+    arm.move_to(P.get("rest", P["home"]), stop, SPEED)  # folded away so the camera sees the whole row
     print("\nXONG. Ban o vi tri ban dau: o 1 den, o 2 trang, o 3 tim, o 4 trong. Camera se tu ghi nho vi tri. Dong cua so nay.")
 finally:
     arm.disconnect()
