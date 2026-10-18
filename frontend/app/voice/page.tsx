@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ItemCard } from "@/components/ItemCard";
 import { MAX_TRIALS } from "@/lib/reorder";
 import { fetchTts, voiceReset, voiceStatus, voiceTurn, type ToolCall, type VoiceState } from "@/lib/voice";
-import { GrokVoice } from "@/lib/grokVoice";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const SR: any = typeof window !== "undefined" ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition : null;
@@ -28,13 +27,10 @@ export default function Voice() {
   const [err, setErr] = useState<string | null>(null);
   const [hasSR, setHasSR] = useState(true);
   const endRef = useRef<HTMLDivElement>(null);
-  const [grok, setGrok] = useState(false); // true when the backend uses Grok Voice (realtime)
   const [provider, setProvider] = useState("rules");
   const [tts, setTts] = useState(false); // ElevenLabs available
   const ttsRef = useRef(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const grokRef = useRef<GrokVoice | null>(null);
-  const aiBuf = useRef("");
 
   const recRef = useRef<any>(null);
   const listeningRef = useRef(false);
@@ -44,7 +40,7 @@ export default function Voice() {
   tableRef.current = table;
 
   useEffect(() => {
-    voiceStatus().then((st) => { setGrok(st.realtime); setProvider(st.provider); setTts(st.tts); ttsRef.current = st.tts; });
+    voiceStatus().then((st) => { setProvider(st.provider); setTts(st.tts); ttsRef.current = st.tts; });
   }, []);
   useEffect(() => {
     try { setLog(JSON.parse(localStorage.getItem(HISTORY_KEY) ?? "[]")); } catch { /* ignore */ }
@@ -54,7 +50,6 @@ export default function Voice() {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [log]);
 
-  useEffect(() => { grokRef.current?.sendTable(table); }, [table]);
 
   const startRec = useCallback(() => {
     try { if (listeningRef.current && !speakingRef.current) recRef.current?.start(); } catch { /* already started */ }
@@ -128,38 +123,7 @@ export default function Voice() {
     return () => { listeningRef.current = false; try { rec.stop(); } catch { /* */ } };
   }, [send, startRec]);
 
-  async function startGrok() {
-    setErr(null);
-    const g = new GrokVoice({
-      onUser: (text, final) => {
-        setHeard(final ? "" : text);
-        if (final && text.trim()) setLog((l) => [...l, { role: "you", text: text.trim(), at: Date.now() }]);
-      },
-      onAiDelta: (t) => { aiBuf.current += t; setBusy(true); },
-      onAiDone: (t) => {
-        const text = (t || aiBuf.current).trim();
-        aiBuf.current = ""; setBusy(false);
-        if (text) setLog((l) => [...l, { role: "ai", text, at: Date.now() }]);
-      },
-      onTool: (call, st) => {
-        setCalls((c) => [call, ...c].slice(0, 8)); setState(st);
-        setLog((l) => [...l, { role: "ai", text: "", tools: [call.name], at: Date.now() }]);
-        if (st.shuffleId !== lastShuffle.current) { lastShuffle.current = st.shuffleId; setTable(st.shuffledOrder); setPick(null); }
-      },
-      onError: (m) => setErr(m),
-      onClose: () => { setStarted(false); setListening(false); },
-    });
-    try {
-      await g.start();
-      grokRef.current = g;
-      setStarted(true); setListening(true);
-    } catch (e) {
-      setErr(`Could not start voice: ${e}`);
-    }
-  }
-
   function startConversation() {
-    if (grok) return void startGrok();
     setStarted(true);
     listeningRef.current = true; setListening(true);
     setLog((l) => [...l, { role: "ai", text: GREETING, at: Date.now() }]);
@@ -167,12 +131,6 @@ export default function Voice() {
   }
 
   function endConversation() {
-    if (grokRef.current) {
-      grokRef.current.emergencyStop();
-      setTimeout(() => { grokRef.current?.stop(); grokRef.current = null; }, 800);
-      setStarted(false); setListening(false);
-      return;
-    }
     listeningRef.current = false; setListening(false); setStarted(false);
     try { recRef.current?.stop(); } catch { /* */ }
     window.speechSynthesis?.cancel(); audioRef.current?.pause();
@@ -191,10 +149,10 @@ export default function Voice() {
   return (
     <main className="play voice">
       <h1>ReMind</h1>
-      <p className="small">{grok ? "Voice: Grok Voice (realtime)" : hasSR ? `Brain: ${provider === "gemini" ? "Gemini" : "keyword rules (set GEMINI_API_KEY)"} · Voice: ${tts ? "ElevenLabs" : "browser (set ELEVENLABS_API_KEY)"}` : "This browser has no speech recognition (use Chrome); typing works."}</p>
+      <p className="small">{hasSR ? `Brain: ${provider === "gemini" ? "Gemini" : "keyword rules (set GEMINI_API_KEY)"} · Voice: ${tts ? "ElevenLabs" : "browser (set ELEVENLABS_API_KEY)"}` : "This browser has no speech recognition (use Chrome); typing works."}</p>
 
       {!started ? (
-        <button className="primary big start" onClick={startConversation} disabled={!hasSR && !grok}>🎙️ Start conversation</button>
+        <button className="primary big start" onClick={startConversation} disabled={!hasSR}>🎙️ Start conversation</button>
       ) : (
         <div className="row">
           <span className={`badge ${listening && !busy ? "on live-dot" : ""}`}>{busy ? "Thinking…" : "Listening…"}</span>

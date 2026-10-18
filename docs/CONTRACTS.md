@@ -42,4 +42,4 @@ One job at a time, allowlisted actions only, errors go to `needs_staff`, no auto
 
 ## Env flags
 
-`ROBOT_MODE=mock|perceptron`, `VISION_MODE=mock|perceptron`, `XAI_API_KEY` (empty = rule-based agent), `MONGODB_URI` (empty = in-memory).
+`ROBOT_MODE=mock|perceptron`, `VISION_MODE=mock|perceptron`, `GEMINI_API_KEY` (empty = keyword agent), `ELEVENLABS_API_KEY` (empty = browser voice), `MONGODB_URI` (empty = in-memory).

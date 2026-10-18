@@ -3,7 +3,7 @@
 DubHacks 2026 | v1.0 | Proposed design
 
 - **Main track:** Community Kitchen
-- **Sponsored:** Perceptron Robotics (primary), SpaceXAI (Grok Voice), Photon (optional)
+- **Sponsored:** Perceptron Robotics (primary), Photon (optional)
 - **Non-sponsored:** MongoDB
 
 ## 1. Executive summary
@@ -87,7 +87,7 @@ Participant Web UI (Next.js / React)
     Session Orchestrator -------- MongoDB Atlas
        |        |                     |
    Agent       Robot Worker       Profiles / Sessions
- (Grok Voice)  (LeRobot / Perceptron policy)
+ (Gemini+11Labs) (LeRobot / Perceptron policy)
        |        |
    speech      SO-101 arm
        |
@@ -110,7 +110,6 @@ Participant Web UI (Next.js / React)
 | --- | --- | --- | --- |
 | Community Kitchen | Person-centered activity and accessible interface | Full user journey, respectful interaction, caregiver supervision | P0 |
 | Perceptron Robotics | SO-101 manipulation with checkpoint / fine-tuning | Actual working robot video, teleop data, inference results | P0 |
-| SpaceXAI | Grok Voice for conversational turns and spoken choices | Real voice API calls and responses | P1 |
 | Photon | Opt-in caregiver messaging agent for assistance requests | One real message triggered by participant request | P2 |
 | MongoDB | Profiles, preferences, sessions, robot jobs | Data persists across restart and can be deleted | P0 |
 
@@ -154,7 +153,7 @@ Use pseudonymous synthetic demo participants. No diagnosis, real patient data, b
 
 - **First hour:** Finalize one prop and workspace. With Perceptron mentors, confirm arm calibration, teleop and safe stop. In parallel build basic React activity UI and mocked job API.
 - **Hours 2-4:** Record robot demonstrations, train or test checkpoint, run the first real pick-and-place. Build FastAPI job lifecycle and MongoDB session storage. Film any early working success.
-- **Hours 4-6:** Connect UI -> orchestrator -> robot worker. Add conversational agent and Grok Voice if credentials and SDK work. Keep typed buttons as fallback.
+- **Hours 4-6:** Connect UI -> orchestrator -> robot worker. Add conversational agent and the Gemini/ElevenLabs voice agent if credentials and SDK work. Keep typed buttons as fallback.
 - **Final hours:** Stabilize one real action, run end-to-end tests, record submission video, prepare pitch. Photon only if core loop is working.
 
 **Team split:** Robotics owner; backend/integration owner; frontend/agent owner; product/demo/testing owner. The robot owner should request mentor help early rather than spend hours blocked on calibration.
@@ -167,7 +166,7 @@ Use pseudonymous synthetic demo participants. No diagnosis, real patient data, b
 | Participant says Stop | No new robot actions; stop request issued; staff can intervene |
 | Robot fails grasp | UI says action failed; invite caregiver; no fabricated completion |
 | MongoDB unavailable | Continue ephemeral demo without claiming preferences saved |
-| Grok Voice unavailable | Typed choice + on-screen text fallback |
+| Voice APIs unavailable | Typed choice + on-screen text fallback |
 | Photon unavailable | No dependency on messaging for safe robot operation |
 | Person reaches into workspace | Staff pauses physical robot immediately |
 

@@ -66,27 +66,10 @@ def rule_reply(text: str, calls: list[tuple[str, dict, dict]], state: GameState)
     return "Okay."
 
 
-async def _chat(messages: list[dict]) -> dict | None:
-    if not (settings.xai_api_key and settings.xai_model):
-        return None
-    try:
-        async with httpx.AsyncClient(timeout=15) as client:
-            r = await client.post(
-                f"{settings.xai_base_url}/chat/completions",
-                headers={"Authorization": f"Bearer {settings.xai_api_key}"},
-                json={"model": settings.xai_model, "messages": messages, "tools": TOOL_SCHEMAS, "tool_choice": "auto"},
-            )
-            r.raise_for_status()
-            return r.json()["choices"][0]["message"]
-    except Exception as e:  # noqa: BLE001
-        log.warning("LLM call failed, using rules: %s", e)
-        return None
-
-
 def provider() -> str:
     if settings.gemini_api_key:
         return "gemini"
-    return "grok" if settings.xai_api_key else "rules"
+    return "rules"
 
 
 async def _gemini(contents: list[dict], system: str) -> dict:
@@ -135,7 +118,7 @@ async def _gemini_turn(state: GameState, history: list[dict], text: str, table_o
 
 
 async def turn(state: GameState, history: list[dict], text: str, table_order: list[str] | None) -> tuple[str, list[dict]]:
-    """Returns (reply, tool_calls_made). `history` is mutated (kept short by the caller)."""
+    """Returns (reply, tool_calls_made). Gemini picks the tools; the keyword rules answer if there is no key or the call fails."""
     made: list[dict] = []
 
     if STOP_RE.search(text):  # safety first: never depends on the model
@@ -147,31 +130,6 @@ async def turn(state: GameState, history: list[dict], text: str, table_order: li
         out = await _gemini_turn(state, history, text, table_order)
         if out is not None:
             return out
-        made = []
-        history.append({"role": "user", "parts": [{"text": text}]})
-    else:
-        history.append({"role": "user", "content": text})
-    system = {"role": "system", "content": SYSTEM.format(state=json.dumps(state.view()))}
-
-    for _ in range(4):
-        msg = await _chat([system, *history]) if provider() == "grok" else None
-        if msg is None:
-            break
-        history.append({k: v for k, v in msg.items() if v is not None})
-        calls = msg.get("tool_calls") or []
-        if not calls:
-            return (msg.get("content") or "").strip() or "I'm here.", made
-        for c in calls:
-            name = c["function"]["name"]
-            try:
-                args = json.loads(c["function"].get("arguments") or "{}")
-            except json.JSONDecodeError:
-                args = {}
-            res = await run_tool(state, name, args, table_order)
-            made.append({"name": name, "args": args, "result": res})
-            history.append({"role": "tool", "tool_call_id": c["id"], "content": json.dumps(res)})
-    else:
-        return "Let me try that again in a moment.", made
 
     # Rule-based fallback (no key, or the LLM failed before answering)
     done = []
@@ -180,5 +138,6 @@ async def turn(state: GameState, history: list[dict], text: str, table_order: li
         made.append({"name": name, "args": args, "result": res})
         done.append((name, args, res))
     reply = rule_reply(text, done, state)
-    history.append({"role": "model", "parts": [{"text": reply}]} if provider() == "gemini" else {"role": "assistant", "content": reply})
+    if provider() == "gemini":  # keep the model's view of the conversation complete
+        history += [{"role": "user", "parts": [{"text": text}]}, {"role": "model", "parts": [{"text": reply}]}]
     return reply, made

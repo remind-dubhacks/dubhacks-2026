@@ -1,9 +1,9 @@
 import httpx
-from fastapi import APIRouter, HTTPException, Response, WebSocket
+from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel
 
 from ..config import settings
-from . import agent, realtime
+from . import agent
 from .tools import GAMES, GameState
 
 router = APIRouter(prefix="/api/voice", tags=["voice"])
@@ -41,9 +41,9 @@ async def games() -> list[dict]:
 
 @router.get("/status")
 async def status() -> dict:
-    """realtime=true means Grok Voice is configured; the UI then streams audio instead of using browser speech."""
+    """Which brain and voice are active, so the UI can show it."""
     provider = agent.provider()
-    return {"realtime": provider == "grok", "provider": provider, "tts": bool(settings.elevenlabs_api_key)}
+    return {"provider": provider, "tts": bool(settings.elevenlabs_api_key)}
 
 
 class TtsIn(BaseModel):
@@ -67,8 +67,3 @@ async def tts(body: TtsIn) -> Response:
     except httpx.HTTPError as e:
         raise HTTPException(502, f"ElevenLabs failed: {e}") from e
     return Response(r.content, media_type="audio/mpeg")
-
-
-@router.websocket("/ws")
-async def ws(websocket: WebSocket) -> None:
-    await realtime.run(websocket)

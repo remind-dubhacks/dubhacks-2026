@@ -29,11 +29,11 @@ export async function voiceTurn(sessionId: string, text: string, tableOrder: str
 export const voiceReset = (sessionId: string) =>
   fetch(`${API}/api/voice/reset`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId }) });
 
-export async function voiceStatus(): Promise<{ realtime: boolean; provider: "gemini" | "grok" | "rules"; tts: boolean }> {
+export async function voiceStatus(): Promise<{ provider: "gemini" | "rules"; tts: boolean }> {
   try {
     return await (await fetch(`${API}/api/voice/status`)).json();
   } catch {
-    return { realtime: false, provider: "rules", tts: false };
+    return { provider: "rules", tts: false };
   }
 }
 

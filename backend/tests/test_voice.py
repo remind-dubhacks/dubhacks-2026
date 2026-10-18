@@ -9,9 +9,7 @@ def post(c, text, table=None):
 
 
 def test_voice_flow_rules(monkeypatch):
-    async def no_llm(messages):
-        return None
-    monkeypatch.setattr(agent, "_chat", no_llm)
+    monkeypatch.setattr(agent.settings, "gemini_api_key", "")
     with TestClient(main.app) as c:
         r = post(c, "let's play the ordering game")
         assert r["toolCalls"][0]["name"] == "start_game" and r["state"]["phase"] == "awaiting"
