@@ -22,6 +22,7 @@ RANGES: dict[str, list[tuple[tuple[int, int, int], tuple[int, int, int]]]] = {
     "purple": [((108, 25, 50), (145, 255, 230))],
 }
 MIN_AREA = 250  # pixels at 640 px wide
+UNION = {"purple"}
 MIRRORED = os.getenv("SIDE_CAMERA_MIRRORED", "1") == "1"
 
 
@@ -52,8 +53,19 @@ def _find(frame_bgr: np.ndarray) -> dict[str, tuple[float, int, float]]:
             continue
         best = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
         area = int(stats[best, cv2.CC_STAT_AREA])
-        if area >= MIN_AREA:
-            out[name] = (float(cents[best][0]) / 640, area, float(cents[best][1]) / img.shape[0])
+        if area < MIN_AREA:
+            continue
+        cx, cy = float(cents[best][0]), float(cents[best][1])
+        if name in UNION:
+            # The translucent purple block shows up as several patches that change frame to frame;
+            # the centre of all its patches near the biggest one is far steadier than any one patch.
+            keep = [i for i in range(1, n) if stats[i, cv2.CC_STAT_AREA] >= 40
+                    and abs(cents[i][0] - cx) < 90 and abs(cents[i][1] - cy) < 160]
+            wsum = sum(stats[i, cv2.CC_STAT_AREA] for i in keep)
+            cx = float(sum(cents[i][0] * stats[i, cv2.CC_STAT_AREA] for i in keep) / wsum)
+            cy = float(sum(cents[i][1] * stats[i, cv2.CC_STAT_AREA] for i in keep) / wsum)
+            area = int(wsum)
+        out[name] = (cx / 640, area, cy / img.shape[0])
     return out
 
 
