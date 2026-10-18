@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import StudioVoice from "./StudioVoice";
 import { studio, workerUrl, type ArmStatus, type Dataset, type MotorHealth, type StudioStatus, type UploadState } from "@/lib/studio";
 
 const MIN_EPISODES = 50; // Perceptron mentors: ~50 demonstrations is the practical minimum
@@ -102,7 +103,7 @@ export default function Studio() {
     seeded.current = true;
     setSide(status.cameras.side);
     setWrist(status.cameras.wrist);
-    setRec((r) => ({ ...r, repo: `${status.hfUser || "remind"}/remind-tea` }));
+    setRec((r) => ({ ...r, repo: `${status.hfUser || "remind"}/remind-sort` }));
   }, [status]);
 
   const refreshData = useCallback(() => {
@@ -142,7 +143,21 @@ export default function Studio() {
       {offline && <p className="warn">Lost connection to the robot worker…</p>}
       {err && <p className="warn">⚠ {err}</p>}
 
-      <div className="grid3">
+      <StudioVoice
+        status={status}
+        logs={logs}
+        datasets={datasets}
+        uploads={uploads}
+        rec={rec}
+        actions={{
+          teleop: async () => { setPreviews(false); await studio.teleop(true); },
+          record: async () => { setPreviews(false); await studio.record({ ...rec, sounds: false }); },
+          stop: async () => { await studio.stop(); },
+          checkMotors: async () => { const h = await studio.health(); setHealth(h); return h; },
+        }}
+      />
+
+      <div className="grid3" style={{ marginTop: 16 }}>
         <Arm name="Follower (robot)" arm={status?.follower} />
         <Arm name="Leader (handle)" arm={status?.leader} />
         <div className="card">
@@ -236,7 +251,7 @@ export default function Studio() {
           <label className="small" style={{ alignSelf: "end" }}><input type="checkbox" checked={rec.rerun} onChange={(e) => setRec({ ...rec, rerun: e.target.checked })} /> Show in Rerun</label>
         </div>
         <div className="row" style={{ marginTop: 12 }}>
-          <button className="primary" disabled={busy || !armsReady || !rec.repo} onClick={() => run(async () => { setPreviews(false); await studio.record(rec); })}>
+          <button className="primary" disabled={busy || !armsReady || !rec.repo} onClick={() => run(async () => { setPreviews(false); await studio.record({ ...rec, sounds: false }); })}>
             Start recording
           </button>
           {recording && (

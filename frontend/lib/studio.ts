@@ -12,6 +12,7 @@ export type StudioStatus = {
     episode: number | null;
     phase: string | null;
     exitCode: number | null;
+    stoppedByUser?: boolean;
     cmd: string;
   };
   ports: string[];
@@ -64,7 +65,7 @@ export const studio = {
   releaseCameras: () => post("/studio/cameras/release"),
   setCameras: (side: number, wrist: number) => post("/studio/config/cameras", { side, wrist }),
   teleop: (rerun = true) => post("/studio/teleop", { cameras: true, rerun }),
-  record: (body: { repo: string; task: string; episodes: number; episodeSeconds: number; resetSeconds: number; rerun: boolean }) =>
+  record: (body: { repo: string; task: string; episodes: number; episodeSeconds: number; resetSeconds: number; rerun: boolean; sounds?: boolean }) =>
     post<{ resume: boolean }>("/studio/record", body),
   stop: () => post("/studio/stop"),
   datasets: () => req<Dataset[]>("/studio/datasets"),

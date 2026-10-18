@@ -47,6 +47,7 @@ class Proc:
         self.episode: int | None = None
         self.phase: str | None = None
         self.exit_code: int | None = None
+        self.stopped_by_user = False
         self.lock = threading.Lock()
 
     @property
@@ -73,6 +74,7 @@ class Proc:
         if not exe:
             raise HTTPException(500, f"{cmd[0]} not found; run `uv sync --extra hardware`")
         self.kind, self.cmd, self.started, self.episode, self.phase, self.exit_code = kind, cmd, time.time(), None, None, None
+        self.stopped_by_user = False
         self.log(f"$ {' '.join(cmd)}")
         self.p = subprocess.Popen(
             [exe, *cmd[1:]],
@@ -99,6 +101,7 @@ class Proc:
         if not self.running:
             return
         assert self.p
+        self.stopped_by_user = True
         # SIGINT lets LeRobot finish cleanly (save the dataset, disconnect arms).
         os.killpg(self.p.pid, signal.SIGINT)
         try:
@@ -115,6 +118,7 @@ class Proc:
             "episode": self.episode,
             "phase": self.phase,
             "exitCode": self.exit_code,
+            "stoppedByUser": self.stopped_by_user,
             "cmd": " ".join(self.cmd),
         }
 
@@ -336,6 +340,7 @@ class RecordIn(BaseModel):
     episodeSeconds: int = 20
     resetSeconds: int = 10
     rerun: bool = True
+    sounds: bool = True  # LeRobot's own spoken prompts; the Studio voice assistant replaces them
 
 
 @router.post("/record")
@@ -355,7 +360,7 @@ def start_record(body: RecordIn) -> dict:
         "--dataset.fps=30",
         "--dataset.push_to_hub=false",
         f"--display_data={'true' if body.rerun else 'false'}",
-        "--play_sounds=true",
+        f"--play_sounds={'true' if body.sounds else 'false'}",
     ]
     if resume:
         cmd.append("--resume=true")

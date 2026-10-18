@@ -138,3 +138,10 @@ button.start { width: 100%; min-height: 110px; font-size: 2rem; margin: 16px 0; 
 .bubble .who { font-size: 13px; color: var(--muted); }
 .chips { margin-top: 4px !important; }
 .chip { display: inline-block; font-size: 13px; background: #ece5da; border-radius: 999px; padding: 1px 10px; margin-right: 6px; }
+
+/* Studio voice assistant */
+.voice { margin-top: 16px; border-color: var(--accent); }
+.chip { min-height: 36px; padding: 4px 14px; font-size: 15px; border-radius: 999px; }
+.voice-log { margin-top: 12px; max-height: 220px; overflow: auto; font-size: 17px; }
+.voice-log p { margin: 6px 0; }
+.voice-log p.you { color: var(--muted); }
