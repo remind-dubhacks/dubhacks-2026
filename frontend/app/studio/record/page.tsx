@@ -111,7 +111,7 @@ export default function RecordPage() {
         {stopped && !waiting && campaign?.state !== "done" && (
           <button className="primary huge" onClick={() => act("start")}>{done > 0 || campaign?.paused ? "Resume" : "Start"}</button>
         )}
-        {stopped && /gripper|motor overloaded/i.test(campaign?.message ?? "") && (
+        {stopped && !status?.process.running && (
           <button className="huge" onClick={async () => {
             claimVoice(true);
             try { const r = await studio.clearFault(); setErr(r.cleared ? null : "Fault still there: unplug the follower's DC power for 10 s."); }
