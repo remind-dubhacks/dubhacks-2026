@@ -2,10 +2,12 @@
 
 // Nurse-facing setup, shown before a session and again on Esc. The Start click is also the browser
 // gesture that allows the microphone and sound playback. Styled as the "device faceplate" from the
-// Calm design handoff (Nurse Setup.dc.html).
+// Calm design handoff (Nurse Setup.dc.html). The Nurse button opens the nurse page behind a simple
+// password; it is a client-side deterrent only, since /nurse itself is not protected.
 // Picking a resident sends only their participantId: the backend takes their name, care profile and
 // memories from it. "Someone else…" (or no residents to pick from) sends a typed first name instead.
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { api, type Participant } from "@/lib/api";
 
 const GAMES = [
@@ -19,6 +21,7 @@ const REORDER_AVAILABLE = false;
 const available = (id: string) => id !== "reorder" || REORDER_AVAILABLE;
 const SAVED = "remind.patient.setup";
 const GUEST = "guest";
+const NURSE_PASSWORD = "123";
 
 type Props = {
   live: boolean;
@@ -31,14 +34,51 @@ type Props = {
 
 const displayName = (p: Participant) => p.careProfile?.preferredName || p.alias;
 
-function Header() {
+function Header({ onNurse }: { onNurse: () => void }) {
   return (
     <div className="face-head">
       <h1>ReMind Companion</h1>
-      <div className="face-lights" aria-hidden="true">
-        <div className="grille">{Array.from({ length: 9 }, (_, i) => <span key={i} />)}</div>
-        <span className="led" />
-      </div>
+      <button type="button" className="nurse-link" onClick={onNurse}>Nurse</button>
+    </div>
+  );
+}
+
+function NurseGate({ onClose }: { onClose: () => void }) {
+  const router = useRouter();
+  const [password, setPassword] = useState("");
+  const [wrong, setWrong] = useState(false);
+
+  function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (password === NURSE_PASSWORD) return router.push("/nurse");
+    setWrong(true);
+    setPassword("");
+  }
+
+  // Esc closes only the gate; stopping it here keeps PatientScreen's Esc toggle from also firing.
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Escape") { e.stopPropagation(); onClose(); }
+  };
+
+  return (
+    <div className="nurse-gate" onKeyDown={onKeyDown}>
+      <form className="face" role="dialog" aria-modal="true" aria-labelledby="nurse-gate-title" onSubmit={submit}>
+        <h2 id="nurse-gate-title">Nurse page</h2>
+        <label className="field">
+          <span>Password</span>
+          <div className="field-well">
+            <input type="password" inputMode="numeric" value={password} autoFocus required
+              onChange={(e) => { setPassword(e.target.value); setWrong(false); }} />
+          </div>
+        </label>
+        {wrong && <p className="error">Wrong password.</p>}
+        <div className="start-well">
+          <button type="submit" className="start">Open</button>
+        </div>
+        <div className="start-well">
+          <button type="button" className="start secondary" onClick={onClose}>Cancel</button>
+        </div>
+      </form>
     </div>
   );
 }
@@ -48,6 +88,7 @@ export function SetupCard({ live, connecting, error, onStart, onEnd, onHide }: P
   const [games, setGames] = useState<string[]>(GAMES.filter((g) => g.on && available(g.id)).map((g) => g.id));
   const [residents, setResidents] = useState<Participant[] | null>(null); // null while loading
   const [choice, setChoice] = useState(""); // a resident's _id, or GUEST
+  const [gateOpen, setGateOpen] = useState(false);
 
   useEffect(() => {
     let saved: { name?: string; games?: string[]; participantId?: string } | null = null;
@@ -80,12 +121,14 @@ export function SetupCard({ live, connecting, error, onStart, onEnd, onHide }: P
 
   const toggle = (id: string) => setGames((gs) => (gs.includes(id) ? gs.filter((g) => g !== id) : [...gs, id]));
   const helper = <p className="helper">After Start, the screen shows only the calm view. Press Esc to come back here.</p>;
+  const header = <Header onNurse={() => setGateOpen(true)} />;
+  const gate = gateOpen && <NurseGate onClose={() => setGateOpen(false)} />;
 
   if (live) {
     return (
       <div className="calm-setup">
         <div className="face">
-          <Header />
+          {header}
           <p className="status">Session running{who ? ` with ${who}` : ""}.</p>
           <div className="start-well">
             <button type="button" className="start" onClick={onHide}>Back to patient view</button>
@@ -95,6 +138,7 @@ export function SetupCard({ live, connecting, error, onStart, onEnd, onHide }: P
           </div>
           {helper}
         </div>
+        {gate}
       </div>
     );
   }
@@ -102,7 +146,7 @@ export function SetupCard({ live, connecting, error, onStart, onEnd, onHide }: P
   return (
     <div className="calm-setup">
       <form className="face" onSubmit={start}>
-        <Header />
+        {header}
         {residents && residents.length > 0 && (
           <label className="field">
             <span>Who&apos;s playing?</span>
@@ -156,6 +200,7 @@ export function SetupCard({ live, connecting, error, onStart, onEnd, onHide }: P
         </div>
         {helper}
       </form>
+      {gate}
     </div>
   );
 }
