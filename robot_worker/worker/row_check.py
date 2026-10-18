@@ -101,7 +101,34 @@ def _find(frame_bgr: np.ndarray) -> dict[str, tuple[float, int, float]]:
             cy = float(sum(cents[i][1] * stats[i, cv2.CC_STAT_AREA] for i in keep) / wsum)
             area = int(wsum)
         out[name] = (cx / 640, area, cy / img.shape[0])
+    if "white" not in out and "black" in out and "purple" in out:
+        w = _white_by_edges(img, out)
+        if w:
+            out["white"] = w
     return out
+
+
+def _white_by_edges(img: np.ndarray, out: dict) -> tuple[float, int, float] | None:
+    """On a table the same colour as the cream keycap, find it by shape: a keycap and its clear base
+    make a dense patch of edges; the tabletop doesn't. Must sit on the row the black and purple
+    keyrings define and not on top of either of them."""
+    H, W = img.shape[:2]
+    g = cv2.GaussianBlur(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY), (3, 3), 0)
+    e = cv2.Canny(g, 40, 120)
+    e = cv2.morphologyEx(cv2.dilate(e, np.ones((5, 5), np.uint8)), cv2.MORPH_CLOSE, np.ones((9, 9), np.uint8))
+    n, _, st, ce = cv2.connectedComponentsWithStats(e)
+    row_y = (out["black"][2] + out["purple"][2]) / 2 * H
+    taken = [(out[k][0] * W, out[k][2] * H) for k in ("black", "purple")]
+    best = None
+    for i in range(1, n):
+        a = int(st[i, cv2.CC_STAT_AREA]); x, y = ce[i]
+        if a < 400 or a > MAX_AREA * 1.5 or abs(y - row_y) > 0.12 * H:
+            continue
+        if any(abs(x - tx) < 45 for tx, _ in taken):
+            continue
+        if best is None or a > best[1]:
+            best = (float(x) / W, a, float(y) / H)
+    return best
 
 
 def read_row(frame_bgr: np.ndarray) -> dict:
