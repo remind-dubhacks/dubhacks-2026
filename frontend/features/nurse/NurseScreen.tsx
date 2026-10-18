@@ -2,6 +2,7 @@
 
 // Nurse dashboard (Nurse Dashboard mockup): urgent alerts, the residents, and for the one picked their sessions,
 // what the companion remembers about them, their care context and consent to remember.
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type Participant } from "@/lib/api";
 import { fetchSessions, type CompanionSession } from "@/lib/voice";
@@ -19,7 +20,7 @@ export function NurseScreen() {
   const [residents, setResidents] = useState<Participant[]>([]);
   const [sessions, setSessions] = useState<CompanionSession[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
-  const [today, setToday] = useState("");
+  const [now, setNow] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const detailRef = useRef<HTMLDivElement>(null);
 
@@ -32,10 +33,16 @@ export function NurseScreen() {
   }, []);
 
   useEffect(() => {
-    setToday(new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" }));
+    const tick = () => {
+      const d = new Date();
+      const date = d.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
+      setNow(`${date} · ${d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}`);
+    };
+    tick();
     load();
     const t = setInterval(load, 5000);
-    return () => clearInterval(t);
+    const c = setInterval(tick, 15000);
+    return () => { clearInterval(t); clearInterval(c); };
   }, [load]);
 
   const byId = new Map(residents.map((r) => [r._id, r]));
@@ -70,8 +77,11 @@ export function NurseScreen() {
     <div className="nurse">
       <link rel="stylesheet" href={FONT} precedence="default" />
       <header className="nurse-head">
-        <h1>ReMind Companion</h1>
-        <span>{today}</span>
+        <h1>Nurse</h1>
+        <div className="nurse-head-end">
+          <span>{now}</span>
+          <Link href="/patient" className="nurse-patient-link">Patient</Link>
+        </div>
       </header>
       {err && <p className="nurse-error" role="alert">{err}</p>}
 

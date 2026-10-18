@@ -113,11 +113,11 @@ export function MemoriesTab({ resident, onChange }: { resident: Participant; onC
           {confirm === "all" ? (
             <>
               <p>Delete everything remembered about {resident.alias}? This can't be undone, and remembering turns off.</p>
-              <button className="key key-red" disabled={busy} onClick={forget}>Forget everything</button>
+              <button className="key key-red" disabled={busy} onClick={forget}>Clear Data</button>
               <button className="key key-grey" onClick={() => setConfirm(null)}>Cancel</button>
             </>
           ) : (
-            <button className="key key-grey" onClick={() => setConfirm("all")}>Forget everything…</button>
+            <button className="key key-grey" onClick={() => setConfirm("all")}>Clear Data</button>
           )}
         </div>
       )}

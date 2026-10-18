@@ -4,27 +4,28 @@
 .nurse {
   --ink: #1e2b26;
   --ink-muted: #4a524d;
+  --ink-label: #2f3833;
+  --ground: linear-gradient(180deg, rgb(214, 232, 240) 0%, rgb(230, 239, 216) 100%);
   --font: "Atkinson Hyperlegible Next", system-ui, sans-serif;
   --face: linear-gradient(180deg, #f1f3ee 0%, #e0e4db 100%);
   --well: linear-gradient(180deg, #c6cbc1 0%, #f5f7f2 100%);
   --field-well: linear-gradient(180deg, #cdd2c8 0%, #f5f7f2 100%);
   --field: #f8f9f5;
   --key-on: linear-gradient(180deg, #5a9a76 0%, #3d7457 100%);
-  --pine: linear-gradient(180deg, #4c8a68 0%, #2f6248 100%);
+  --key-off: linear-gradient(180deg, #d9dcd6 0%, #b9beb6 100%);
+  --primary: linear-gradient(180deg, #4c8a68 0%, #2f6248 100%);
   --red: #d9503a;
   --red-key: linear-gradient(180deg, #c9533d 0%, #a63a27 100%);
-  --raised: inset 0 1px 0 #fff, 0 2px 0 rgba(30, 43, 38, 0.1), 0 6px 14px rgba(30, 43, 38, 0.12);
+  --raised: inset 0 1px 0 rgba(255, 255, 255, 0.8), inset 0 -2px 0 rgba(0, 0, 0, 0.1), 0 2px 3px rgba(30, 43, 38, 0.3);
   --pressed: inset 0 2px 5px rgba(0, 0, 0, 0.25);
 
   min-height: 100dvh;
   box-sizing: border-box;
-  max-width: 1440px;
-  margin: 0 auto;
-  padding: 32px 24px 48px;
+  padding: 32px max(24px, calc((100% - 1440px) / 2)) 48px;
   display: flex;
   flex-direction: column;
   gap: 24px;
-  background: #fbfbf9;
+  background: var(--ground);
   color: var(--ink);
   font-family: var(--font);
   font-size: 19px;
@@ -38,9 +39,22 @@
 .nurse .small { font-size: 16px; }
 .nurse .dot { width: 14px; height: 14px; flex-shrink: 0; border: none; border-radius: 50%; background: var(--red); box-shadow: 0 0 0 3px rgba(217, 80, 58, 0.15); }
 
-.nurse-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; padding: 0 8px; }
-.nurse-head h1 { font-size: 32px; font-weight: 600; letter-spacing: -0.01em; }
+.nurse-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 0 8px; }
+.nurse-head h1 { font-size: 32px; font-weight: 600; letter-spacing: -0.01em; text-shadow: 0 1px 0 rgba(255, 255, 255, 0.8); }
+.nurse-head-end { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
 .nurse-head span { font-size: 22px; color: var(--ink-muted); }
+.nurse .nurse-patient-link {
+  padding: 8px 18px;
+  border-radius: 14px;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--ink-label);
+  text-decoration: none;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.6);
+  background: var(--key-off);
+  box-shadow: var(--raised);
+}
+.nurse .nurse-patient-link:active { transform: translateY(1px); }
 .nurse-error { color: #8f2f1f; background: #fbe9e5; padding: 12px 16px; border-radius: 14px; }
 
 /* Keys */
@@ -56,8 +70,8 @@
 .nurse .key:active:not(:disabled) { transform: translateY(2px); box-shadow: var(--pressed); }
 .nurse .key:disabled { opacity: 0.45; cursor: not-allowed; }
 .nurse .key-red { background: var(--red-key); color: #fff; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 2px 0 #7e2a1c, 0 6px 14px rgba(166, 58, 39, 0.3); }
-.nurse .key-grey { background: linear-gradient(180deg, #f5f6f3 0%, #dfe2db 100%); }
-.nurse .key-pine { background: var(--pine); color: #fff; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 2px 0 #23503a, 0 6px 14px rgba(47, 98, 72, 0.3); }
+.nurse .key-grey { background: var(--key-off); color: var(--ink-label); }
+.nurse .key-pine { background: var(--primary); color: #fff; text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.25); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), inset 0 -3px 0 rgba(0, 0, 0, 0.18), 0 3px 6px rgba(30, 43, 38, 0.35); }
 
 /* Urgent */
 .urgent {
@@ -89,7 +103,7 @@
 .strip-track { flex: 1; display: flex; gap: 8px; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; padding: 2px 0 8px; margin-bottom: -6px; }
 .strip-track::-webkit-scrollbar { display: none; }
 .strip-none { align-self: center; padding: 0 16px; color: var(--ink-muted); }
-.nurse .strip-arrow { flex: 0 0 76px; display: grid; place-items: center; padding: 0; border-radius: 22px; background: var(--face); }
+.nurse .strip-arrow { flex: 0 0 76px; display: grid; place-items: center; padding: 0; border-radius: 22px; background: var(--key-off); }
 .strip-arrow svg { width: 30px; height: 30px; fill: none; stroke: var(--ink); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
 .nurse .resident {
   position: relative;
@@ -117,7 +131,7 @@
   padding: 36px 40px;
   border-radius: 36px;
   background: var(--face);
-  box-shadow: inset 0 1px 0 #fff, inset 0 -2px 0 rgba(30, 43, 38, 0.06), 0 2px 4px rgba(30, 43, 38, 0.08), 0 30px 60px rgba(30, 43, 38, 0.12);
+  box-shadow: inset 0 1px 0 #fff, inset 0 -2px 0 rgba(30, 43, 38, 0.06), 0 2px 4px rgba(30, 43, 38, 0.06), 0 8px 20px rgba(30, 43, 38, 0.06);
   display: flex;
   flex-direction: column;
   scroll-margin-top: 16px;
@@ -127,18 +141,18 @@
 .detail-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; flex-wrap: wrap; }
 .detail-head h2 { font-size: 30px; font-weight: 600; }
 .consent { display: flex; flex-direction: column; align-items: center; gap: 6px; }
-.nurse .toggle { display: flex; align-items: center; gap: 12px; min-width: 230px; justify-content: center; background: linear-gradient(180deg, #d9dcd6 0%, #b9beb6 100%); }
+.nurse .toggle { display: flex; align-items: center; gap: 12px; min-width: 230px; justify-content: center; background: var(--key-off); }
 .nurse .toggle.on { background: var(--key-on); color: #fff; box-shadow: var(--pressed); }
 .toggle-led { width: 12px; height: 12px; border-radius: 50%; background: #7a817c; box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.4); }
 .toggle.on .toggle-led { background: #6ee7a0; box-shadow: 0 0 10px rgba(110, 231, 160, 0.9); }
 
 .tabs, .segmented { display: flex; gap: 6px; padding: 6px; border-radius: 22px; background: var(--well); align-self: flex-start; flex-wrap: wrap; }
-.nurse .tab { padding: 12px 26px; border-radius: 16px; background: linear-gradient(180deg, #f5f6f3 0%, #dfe2db 100%); font-size: 19px; }
+.nurse .tab { padding: 12px 26px; border-radius: 16px; background: var(--key-off); color: var(--ink-label); font-size: 19px; }
 .nurse .tab.on { background: var(--key-on); color: #fff; box-shadow: var(--pressed); }
 
 /* Lists */
 .list { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 10px; }
-.item { padding: 18px 22px; border-radius: 20px; background: #f8f9f5; box-shadow: inset 0 1px 0 #fff, 0 1px 3px rgba(30, 43, 38, 0.1); display: flex; flex-direction: column; gap: 4px; }
+.item { padding: 18px 22px; border-radius: 20px; background: #f8f9f5; box-shadow: inset 0 1px 0 #fff, 0 1px 2px rgba(30, 43, 38, 0.08); display: flex; flex-direction: column; gap: 4px; }
 .item-title { font-size: 21px; font-weight: 600; }
 .item-alert { display: flex; align-items: center; gap: 10px; color: #8f2f1f; }
 .obs { padding-left: 22px; color: var(--ink-muted); }
@@ -190,6 +204,7 @@
 
 @media (max-width: 760px) {
   .nurse { padding: 20px 16px 32px; font-size: 17px; }
+  .nurse-head { align-items: flex-start; }
   .nurse-head { flex-direction: column; gap: 4px; }
   .urgent-row { flex-wrap: wrap; padding: 16px; }
   .urgent-text { flex-basis: calc(100% - 32px); }
