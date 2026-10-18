@@ -1,8 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ItemCard } from "@/components/ItemCard";
-import { MAX_TRIALS } from "@/lib/reorder";
 import { fetchTts, voiceReset, voiceStatus, voiceTurn, type ToolCall, type VoiceState } from "@/lib/voice";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -20,8 +18,6 @@ export default function Voice() {
   const [log, setLog] = useState<Msg[]>([]);
   const [state, setState] = useState<VoiceState | null>(null);
   const [calls, setCalls] = useState<ToolCall[]>([]);
-  const [table, setTable] = useState<string[]>([]);
-  const [pick, setPick] = useState<number | null>(null);
   const [typed, setTyped] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -35,9 +31,6 @@ export default function Voice() {
   const recRef = useRef<any>(null);
   const listeningRef = useRef(false);
   const speakingRef = useRef(false);
-  const tableRef = useRef<string[]>([]);
-  const lastShuffle = useRef(0);
-  tableRef.current = table;
 
   useEffect(() => {
     voiceStatus().then((st) => { setProvider(st.provider); setTts(st.tts); ttsRef.current = st.tts; });
@@ -86,14 +79,9 @@ export default function Voice() {
     setHeard(""); setBusy(true); setErr(null);
     setLog((l) => [...l, { role: "you", text: text.trim(), at: Date.now() }]);
     try {
-      const r = await voiceTurn(sid, text, tableRef.current);
+      const r = await voiceTurn(sid, text, []);
       setCalls(r.toolCalls); setState(r.state);
       setLog((l) => [...l, { role: "ai", text: r.reply, tools: r.toolCalls.map((c) => c.name), at: Date.now() }]);
-      if (r.state.shuffleId !== lastShuffle.current) {
-        lastShuffle.current = r.state.shuffleId;
-        setTable(r.state.shuffledOrder);
-        setPick(null);
-      }
       speak(r.reply);
     } catch {
       setErr("Can't reach the backend (is it running on :8000?)");
@@ -137,15 +125,6 @@ export default function Voice() {
     send("stop");
   }
 
-  function swap(i: number) {
-    if (state?.phase !== "awaiting") return;
-    if (pick === null) return setPick(i);
-    if (pick !== i) setTable((t) => { const c = [...t]; [c[pick], c[i]] = [c[i], c[pick]]; return c; });
-    setPick(null);
-  }
-
-  const awaiting = state?.phase === "awaiting";
-  const gameOn = state && state.target.length > 0 && state.phase !== "stopped";
   return (
     <main className="play voice">
       <h1>ReMind</h1>
@@ -160,22 +139,6 @@ export default function Voice() {
         </div>
       )}
       {heard && <p className="heard">“{heard}”</p>}
-
-      {gameOn && (
-        <section className="card gamebox">
-          <p className="small">Put them in this order</p>
-          <div className="itemrow">{state!.target.map((id, i) => <ItemCard key={id} id={id} index={i} />)}</div>
-          <p className="tries">
-            {Array.from({ length: MAX_TRIALS }, (_, i) => <span key={i} className={`dot ${i < state!.attempt ? "used" : ""}`} />)}
-          </p>
-          <details className="demo" open={awaiting}>
-            <summary>Demo table (stands in for the real table and camera): tap two to swap, then say “done”</summary>
-            <div className="itemrow">
-              {table.map((id, i) => <ItemCard key={i} id={id} index={i} selected={pick === i} onClick={() => swap(i)} />)}
-            </div>
-          </details>
-        </section>
-      )}
 
       <h2>Conversation</h2>
       <div className="chat" aria-live="polite">
