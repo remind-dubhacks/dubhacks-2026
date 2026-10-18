@@ -667,7 +667,7 @@ def test_spot_check_names_the_keyring_and_the_direction():
     ref = {1: (0.757, 0.30), 2: (0.438, 0.30), 3: (0.104, 0.40)}
     ok = slot_locate.spot_problems({"black": (0.75, 0.31), "white": (0.44, 0.29), "purple": (0.10, 0.41)}, ["black", "white", "purple", None], ref)
     assert ok == []
-    bad = slot_locate.spot_problems({"black": (0.69, 0.36), "white": (0.44, 0.29), "purple": (0.10, 0.41)}, ["black", "white", "purple", None], ref)
+    bad = slot_locate.spot_problems({"black": (0.69, 0.40), "white": (0.44, 0.29), "purple": (0.10, 0.41)}, ["black", "white", "purple", None], ref)
     assert len(bad) == 1 and bad[0]["object"] == "black"
     assert "sang trái" in bad[0]["sayVi"] and "lại gần robot" in bad[0]["sayVi"]
 

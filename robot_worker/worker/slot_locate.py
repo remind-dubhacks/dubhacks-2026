@@ -51,8 +51,11 @@ def load_calibration(poses_data: dict) -> dict[int, float]:
 
 # ---------------------------------------------------------------- is each keyring on its spot?
 
-TOL_X = float(os.getenv("SPOT_TOL_X", "0.03"))  # share of the image width (~1 cm on the table)
-TOL_Y = float(os.getenv("SPOT_TOL_Y", "0.05"))
+# The open gripper (~4 cm) takes a keycap (~2 cm) up to ~1.5 cm off centre: 0.05 of the image width.
+# A pick missed at 0.07 off. The long purple block's centre varies more with how it is set down.
+TOL_X = float(os.getenv("SPOT_TOL_X", "0.05"))
+TOL_Y = float(os.getenv("SPOT_TOL_Y", "0.08"))
+LOOSER = {"purple": 1.5}
 NAMES_VI = {"black": "đen", "white": "trắng", "purple": "tím"}
 
 
@@ -94,16 +97,17 @@ def spot_problems(found_xy: dict[str, tuple[float, float]], row: list[str | None
         x, y = found_xy[obj]
         rx, ry = slot_spot(slot, obj, ref_xy)
         dx, dy = x - rx, y - ry
-        if abs(dx) <= TOL_X and abs(dy) <= TOL_Y:
+        tx, ty = TOL_X * LOOSER.get(obj, 1), TOL_Y * LOOSER.get(obj, 1)
+        if abs(dx) <= tx and abs(dy) <= ty:
             continue
         hint_en, hint_vi = [], []
-        if dx > TOL_X:
+        if dx > tx:
             hint_en.append("toward the right end"); hint_vi.append("sang phải (về phía ô 4)")
-        elif dx < -TOL_X:
+        elif dx < -tx:
             hint_en.append("toward the left end"); hint_vi.append("sang trái (về phía ô 1)")
-        if dy > TOL_Y:
+        if dy > ty:
             hint_en.append("closer to the robot"); hint_vi.append("lại gần robot")
-        elif dy < -TOL_Y:
+        elif dy < -ty:
             hint_en.append("a little away from the robot"); hint_vi.append("ra xa robot một chút")
         out.append({"slot": slot, "object": obj, "dx": round(dx, 3), "dy": round(dy, 3),
                     "say": f"Please move the {obj} keyring a little " + " and ".join(hint_en) + ".",
