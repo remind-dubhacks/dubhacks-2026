@@ -42,7 +42,7 @@ async def send_text(to: str, text: str) -> str | None:
         return "PHOTON_SERVICE_URL is not set on the backend"
     try:
         async with httpx.AsyncClient(timeout=10) as client:
-            r = await client.post(f"{settings.photon_service_url}/send", json={"to": to, "text": text})
+            r = await client.post(f"{settings.photon_service_url.rstrip('/')}/send", json={"to": to, "text": text})
     except httpx.HTTPError:
         return "Could not reach the Photon bridge (is `npm start` running in photon/?)"
     if r.is_success:
