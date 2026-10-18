@@ -136,6 +136,11 @@ class OrderMemory:
         if needed_help or self.level == 1:
             easy = [p for p in perms if sum(i != j for i, j in enumerate(p)) == 2]
             perms = easy or perms
+        if self.fixed_start:  # robot rounds: only the shuffles verified on the arm
+            from .shuffles import allowed, shuffle_id
+
+            ok = allowed()
+            perms = [p for p in perms if shuffle_id(tuple(p)) in ok] or perms
         fresh = [p for p in perms if p != self.last_pattern]
         return fresh or perms
 

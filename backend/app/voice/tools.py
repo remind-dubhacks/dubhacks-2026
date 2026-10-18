@@ -22,7 +22,7 @@ from ..games import faces, proverbs, sounds
 from ..games.find_remember import FindRemember
 from ..games.order_memory import OrderMemory, order_from_detections
 from ..games.personalize import pick
-from ..games.shuffles import CAMERA_NAMES, ROBOT_START, fix_for
+from ..games.shuffles import CAMERA_NAMES, ROBOT_START, allowed, fix_for, to_camera
 from ..games.table_watch import TableWatch
 from ..games.reorder import MAX_TRIALS, evaluate, shuffled
 from ..vision.checker import read_order
@@ -328,11 +328,12 @@ ROBOT_EVENT_SAY = {
 OVERHEAT_C = float(os.getenv("ROBOT_ALERT_TEMP_C", "60"))
 
 
-async def robot_shuffle(sid: str, on_event=None) -> dict:
+async def robot_shuffle(sid: str, on_event=None, start: list[str] | None = None) -> dict:
     """Run one trained shuffle on the robot worker and wait for it. The worker guards every motion
     and checks the row with its camera afterwards. `on_event` gets each live job event once."""
     job_id = f"om-{uuid.uuid4().hex[:10]}"
-    await robot_client.submit(job_id, "shuffle", sid)
+    # `start`: the row before the move, so the worker's camera check expects the right result.
+    await robot_client.submit(job_id, "shuffle", sid, start=to_camera(start) if start else None)
     end = time.monotonic() + ROBOT_TIMEOUT_S
     seen = 0
     while time.monotonic() < end:
@@ -354,7 +355,7 @@ def _start_watch(state: GameState) -> None:
     state.watch = TableWatch(original=list(om.original), row=list(om.current), t0=time.monotonic())
 
 
-def _robot_task(state: GameState, sid: str, purpose: str) -> None:
+def _robot_task(state: GameState, sid: str, purpose: str, start: list[str] | None = None) -> None:
     """Run a robot move in the background; the person hears the result through pending_say."""
     state.robot = {"status": "moving", "purpose": purpose, "shuffle": sid}
 
@@ -368,7 +369,7 @@ def _robot_task(state: GameState, sid: str, purpose: str) -> None:
     async def go() -> None:
         om: OrderMemory = state.fr
         try:
-            job = await robot_shuffle(sid, on_event=on_event)
+            job = await robot_shuffle(sid, on_event=on_event, start=start)
         except robot_client.RobotWorkerError as e:
             job = {"status": "failed", "errorCode": "worker_unreachable", "error": str(e)}
         ok = job["status"] in ("succeeded", "verifying")
@@ -486,7 +487,7 @@ async def _om_advance(state: GameState, said: str, table_order: list[str] | None
     if phase == "study":
         step = om.say_back(said)
         if mover_of(state) == "robot" and om.last_shuffle_id:
-            _robot_task(state, om.last_shuffle_id, "shuffle")  # after_shuffle comes when the robot is done
+            _robot_task(state, om.last_shuffle_id, "shuffle", start=list(om.original))  # after_shuffle comes when the robot is done
         elif mover_of(state) == "simulated":
             nxt = om.after_shuffle()
             step.say, step.expect, step.phase = f"{step.say} {nxt.say}", nxt.expect, nxt.phase
@@ -502,10 +503,12 @@ async def _om_advance(state: GameState, said: str, table_order: list[str] | None
         row = await camera_row()
         current = row["order"] if row and all(row["order"]) else om.current
         sid = fix_for(current, om.original)
+        if sid is not None and sid not in allowed():
+            sid = None  # not a shuffle verified on the arm: guide in words instead
         if sid is None:
             step = om.check(said, current if all(current) else None)
         else:
-            _robot_task(state, sid, "show")
+            _robot_task(state, sid, "show", start=list(current))
             return {"ok": True, "say": "Let's watch together. Hands on your lap, please.", "expect": "moved", "phase": "restore", "moves": []}
     elif phase == "restore":
         observed = table_order or await camera_order(om.original)

@@ -23,8 +23,11 @@ async def health() -> dict:
     return await _request("GET", "/health", timeout=30)
 
 
-async def submit(job_id: str, action_id: str, object_id: str) -> dict:
-    return await _request("POST", "/jobs", json={"jobId": job_id, "actionId": action_id, "objectId": object_id})
+async def submit(job_id: str, action_id: str, object_id: str, start: list[str] | None = None) -> dict:
+    body = {"jobId": job_id, "actionId": action_id, "objectId": object_id}
+    if start:  # shuffles: the row before the move (black/white/purple), so the camera checks it right
+        body["start"] = start
+    return await _request("POST", "/jobs", json=body)
 
 
 async def status(job_id: str) -> dict:

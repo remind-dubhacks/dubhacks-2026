@@ -269,7 +269,7 @@ def test_simulated_game_watches_and_finishes_from_the_table(monkeypatch):
 def test_robot_game_shuffles_with_the_robot_then_watches(monkeypatch):
     jobs = []
 
-    async def fake_shuffle(sid, on_event=None):
+    async def fake_shuffle(sid, on_event=None, **kw):
         jobs.append(sid)
         return {"status": "succeeded", "check": {"verdict": "ok"}}
 
@@ -309,7 +309,7 @@ def test_robot_game_shuffles_with_the_robot_then_watches(monkeypatch):
 
 
 def test_robot_failure_calls_a_caregiver(monkeypatch):
-    async def broken(sid, on_event=None):
+    async def broken(sid, on_event=None, **kw):
         return {"status": "failed", "errorCode": "shuffle_mismatch"}
 
     async def go():
@@ -345,7 +345,7 @@ def test_watch_without_camera_is_quiet(monkeypatch):
 def test_robot_failure_texts_the_caregiver_through_photon(monkeypatch):
     sent = []
 
-    async def broken(sid, on_event=None):
+    async def broken(sid, on_event=None, **kw):
         return {"status": "failed", "errorCode": "hands_in_workspace"}
 
     async def fake_alert(kind, session_id, message, to="", patient=""):
@@ -368,7 +368,7 @@ def test_robot_failure_texts_the_caregiver_through_photon(monkeypatch):
 
 
 def test_robot_events_are_spoken_by_the_companion(monkeypatch):
-    async def with_events(sid, on_event=None):
+    async def with_events(sid, on_event=None, **kw):
         on_event({"kind": "moving"})
         on_event({"kind": "paused_for_hand"})
         on_event({"kind": "resumed"})
@@ -481,3 +481,31 @@ def test_playground_simulated_game_shows_three_keycaps():
     with TestClient(main.app) as c:
         r = c.post("/api/play/start", json={"sessionId": "k3", "mover": "simulated"}).json()
     assert sorted(r["state"]["exercise"]["answer"]) == sorted(ORIG)
+
+
+# ---------------------------------------------------------------- robot hookup: verified shuffles, start row
+
+
+def test_robot_rounds_only_use_the_verified_shuffles(monkeypatch):
+    monkeypatch.setenv("ROBOT_SHUFFLES", "swap_lr,swap_lm")
+    om = OrderMemory(fixed_start=ORIG, seed=7)
+    for _ in range(20):
+        om.start()
+        om.shuffle()
+        assert om.last_shuffle_id in {"swap_lr", "swap_lm"}
+
+
+def test_robot_job_carries_the_start_row_in_camera_names(monkeypatch):
+    sent = {}
+
+    async def fake_submit(job_id, action, obj, start=None):
+        sent.update(action=action, obj=obj, start=start)
+        return {}
+
+    async def fake_status(job_id):
+        return {"status": "succeeded", "events": []}
+
+    monkeypatch.setattr(tools.robot_client, "submit", fake_submit)
+    monkeypatch.setattr(tools.robot_client, "status", fake_status)
+    asyncio.run(tools.robot_shuffle("swap_lr", start=[P, W, B]))
+    assert sent == {"action": "shuffle", "obj": "swap_lr", "start": ["purple", "white", "black"]}

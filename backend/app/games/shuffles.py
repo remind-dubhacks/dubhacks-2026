@@ -31,3 +31,17 @@ def fix_for(current: list[str], target: list[str]) -> str | None:
         return None
     pattern = tuple(current.index(o) for o in target)
     return shuffle_id(pattern)
+
+
+def allowed() -> set[str]:
+    """Shuffles the robot may run: ROBOT_SHUFFLES (comma list, the ones verified on the arm), else all."""
+    import os
+
+    only = {x.strip() for x in os.getenv("ROBOT_SHUFFLES", "").split(",") if x.strip()}
+    return (only & set(SHUFFLES)) or set(SHUFFLES)
+
+
+def to_camera(row: list[str]) -> list[str]:
+    """Game object names -> the robot worker's colour names."""
+    back = {v: k for k, v in CAMERA_NAMES.items()}
+    return [back[o] for o in row]
