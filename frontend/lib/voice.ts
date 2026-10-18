@@ -47,3 +47,13 @@ export async function fetchTts(text: string): Promise<Blob> {
   if (!r.ok) throw new Error(`tts ${r.status}`);
   return r.blob();
 }
+
+export type ToolInfo = { name: string; description: string; params: string[]; status: "real" | "mock" | "placeholder"; example: string; does: string };
+
+export async function fetchTools(): Promise<ToolInfo[]> {
+  try {
+    return await (await fetch(`${API}/api/voice/tools`)).json();
+  } catch {
+    return [];
+  }
+}
