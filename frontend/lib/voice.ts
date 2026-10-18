@@ -28,3 +28,32 @@ export async function voiceTurn(sessionId: string, text: string, tableOrder: str
 
 export const voiceReset = (sessionId: string) =>
   fetch(`${API}/api/voice/reset`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId }) });
+
+export async function voiceStatus(): Promise<{ live: boolean; provider: "gemini" | "rules"; tts: boolean }> {
+  try {
+    return await (await fetch(`${API}/api/voice/status`)).json();
+  } catch {
+    return { live: false, provider: "rules", tts: false };
+  }
+}
+
+// ElevenLabs speech from the backend; throws if unavailable so callers can fall back to the browser voice.
+export async function fetchTts(text: string): Promise<Blob> {
+  const r = await fetch(`${API}/api/voice/tts`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+  });
+  if (!r.ok) throw new Error(`tts ${r.status}`);
+  return r.blob();
+}
+
+export type ToolInfo = { name: string; description: string; params: string[]; status: "real" | "mock" | "placeholder"; example: string; does: string };
+
+export async function fetchTools(): Promise<ToolInfo[]> {
+  try {
+    return await (await fetch(`${API}/api/voice/tools`)).json();
+  } catch {
+    return [];
+  }
+}

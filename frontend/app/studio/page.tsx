@@ -1,7 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { studio, workerUrl, type ArmStatus, type Dataset, type MotorHealth, type StudioStatus, type UploadState } from "@/lib/studio";
+import StudioVoice from "./StudioVoice";
+import VisionPanel from "./VisionPanel";
+import CampaignPanel from "./CampaignPanel";
+import { studio, workerUrl, type ArmStatus, type CampaignStatus, type Dataset, type MotorHealth, type StudioStatus, type UploadState } from "@/lib/studio";
 
 const MIN_EPISODES = 50; // Perceptron mentors: ~50 demonstrations is the practical minimum
 
@@ -52,6 +55,7 @@ export default function Studio() {
   const [remote, setRemote] = useState<Record<string, unknown> | null>(null);
   const [datasetId, setDatasetId] = useState("");
   const [steps, setSteps] = useState(1000);
+  const [campaign, setCampaign] = useState<CampaignStatus | null>(null);
   const [health, setHealth] = useState<Awaited<ReturnType<typeof studio.health>> | null>(null);
   const [jobs, setJobs] = useState<Record<string, unknown>[]>([]);
   const [deployments, setDeployments] = useState<Record<string, unknown>[]>([]);
@@ -74,6 +78,7 @@ export default function Studio() {
         if (!alive) return;
         setStatus(s);
         setOffline(false);
+        studio.campaign().then(setCampaign, () => {});
         const l = await studio.logs(lastSeq.current);
         if (l.lines.length) {
           lastSeq.current = l.last;
@@ -102,7 +107,7 @@ export default function Studio() {
     seeded.current = true;
     setSide(status.cameras.side);
     setWrist(status.cameras.wrist);
-    setRec((r) => ({ ...r, repo: `${status.hfUser || "remind"}/remind-tea` }));
+    setRec((r) => ({ ...r, repo: `${status.hfUser || "remind"}/remind-sort` }));
   }, [status]);
 
   const refreshData = useCallback(() => {
@@ -142,7 +147,22 @@ export default function Studio() {
       {offline && <p className="warn">Lost connection to the robot worker…</p>}
       {err && <p className="warn">⚠ {err}</p>}
 
-      <div className="grid3">
+      <StudioVoice
+        status={status}
+        logs={logs}
+        datasets={datasets}
+        uploads={uploads}
+        rec={rec}
+        campaign={campaign}
+        actions={{
+          teleop: async () => { setPreviews(false); await studio.teleop(true); },
+          record: async () => { setPreviews(false); await studio.record({ ...rec, sounds: false }); },
+          stop: async () => { await studio.stop(); },
+          checkMotors: async () => { const h = await studio.health(); setHealth(h); return h; },
+        }}
+      />
+
+      <div className="grid3" style={{ marginTop: 16 }}>
         <Arm name="Follower (robot)" arm={status?.follower} />
         <Arm name="Leader (handle)" arm={status?.leader} />
         <div className="card">
@@ -207,6 +227,8 @@ export default function Studio() {
         )}
       </section>
 
+      <VisionPanel busy={busy} cameras={status?.cameras ?? { side: 0, wrist: 1 }} onError={setErr} />
+
       <section>
         <h2>2. Teleoperate</h2>
         <p className="small">Move the leader by hand; the follower copies it. Opens a Rerun window with both camera feeds and joint plots.</p>
@@ -221,8 +243,10 @@ export default function Studio() {
         </div>
       </section>
 
+      <CampaignPanel status={campaign} hfUser={status?.hfUser ?? ""} onError={setErr} />
+
       <section>
-        <h2>3. Record episodes</h2>
+        <h2>3. Record episodes (manual)</h2>
         <p className="small">
           Each episode: do the whole task with the leader, then reset the scene during the reset time. Aim for {MIN_EPISODES}+ episodes, varying object position a little.
           Recording into an existing dataset name adds to it.
@@ -236,7 +260,7 @@ export default function Studio() {
           <label className="small" style={{ alignSelf: "end" }}><input type="checkbox" checked={rec.rerun} onChange={(e) => setRec({ ...rec, rerun: e.target.checked })} /> Show in Rerun</label>
         </div>
         <div className="row" style={{ marginTop: 12 }}>
-          <button className="primary" disabled={busy || !armsReady || !rec.repo} onClick={() => run(async () => { setPreviews(false); await studio.record(rec); })}>
+          <button className="primary" disabled={busy || !armsReady || !rec.repo} onClick={() => run(async () => { setPreviews(false); await studio.record({ ...rec, sounds: false }); })}>
             Start recording
           </button>
           {recording && (
@@ -289,8 +313,11 @@ export default function Studio() {
         <div className="row">
           <label className="small">Dataset ID <input value={datasetId} onChange={(e) => setDatasetId(e.target.value)} placeholder="from upload" /></label>
           <button disabled={!datasetId} onClick={() => run(async () => setRemote(await studio.remoteDataset(datasetId)))}>Check dataset</button>
-          <label className="small">Steps <input type="number" value={steps} onChange={(e) => setSteps(+e.target.value)} style={{ width: 100 }} /></label>
-          <button className="primary" disabled={!datasetId} onClick={() => run(async () => { await studio.train(datasetId, steps); setJobs(asList(await studio.jobs())); })}>Start training</button>
+          <label className="small">Steps <input type="number" min={1} max={10000} value={steps} onChange={(e) => setSteps(Math.min(10000, Math.max(1, +e.target.value)))} style={{ width: 100 }} /></label>
+          <button className="primary" disabled={!datasetId} onClick={() => run(async () => {
+            if (!confirm("Start a Perceptron training job?\n\nYour team only gets 2 successful training jobs in total. Make sure the dataset passed validation and has ~50+ good episodes per task.")) return;
+            await studio.train(datasetId, steps); setJobs(asList(await studio.jobs()));
+          })}>Start training</button>
           <button disabled={!status?.perceptron.configured} onClick={() => run(async () => { setJobs(asList(await studio.jobs())); setDeployments(asList(await studio.deployments())); })}>Refresh jobs & deployments</button>
         </div>
         {remote && <pre className="log" style={{ maxHeight: 200 }}>{JSON.stringify(remote, null, 2)}</pre>}

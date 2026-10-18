@@ -31,7 +31,7 @@ class PerceptronClient:
     def __init__(self, team_api_key: str, deployment_id: str, base_url: str = BASE_URL) -> None:
         self.deployment_id = deployment_id
         self.control = httpx.Client(
-            base_url=base_url, headers={"Authorization": f"Bearer {team_api_key}"}, timeout=30
+            base_url=base_url, headers={"Authorization": f"Bearer {team_api_key}"}, timeout=30, follow_redirects=True
         )
         self.contract: dict | None = None
 

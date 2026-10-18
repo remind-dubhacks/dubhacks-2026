@@ -46,6 +46,24 @@ TOOL_SCHEMAS = [
 ]
 
 
+# What the UI shows in the Tools menu. status: real | mock | placeholder
+TOOL_INFO = {
+    "list_games": {"status": "real", "example": "What games can we play?", "does": "Lists the game catalog."},
+    "start_game": {"status": "mock", "example": "Let's play the ordering game.", "does": "Starts Reorder. The robot shuffle is simulated in software for now."},
+    "check_arrangement": {"status": "mock", "example": "I'm done.", "does": "Judges the order, counts tries (max 3), explains mistakes. No camera yet, so it always reads the table as correct."},
+    "alert_caregiver": {"status": "placeholder", "example": "I need help.", "does": "Flags that help is needed. Recorded only; no message is sent yet."},
+    "stop": {"status": "real", "example": "Stop.", "does": "Ends the game. Also triggered directly by the word 'stop', without the AI."},
+}
+
+
+def tool_catalog() -> list[dict]:
+    out = []
+    for t in TOOL_SCHEMAS:
+        f = t["function"]
+        out.append({"name": f["name"], "description": f["description"], "params": list(f.get("parameters", {}).get("properties", {})), **TOOL_INFO[f["name"]]})
+    return out
+
+
 async def shuffle(state: GameState) -> None:
     """Prototype: shuffles in software. Replace with a robot worker job (`POST /jobs` with actionId=shuffle)."""
     state.shuffled_order = shuffled(state.target)

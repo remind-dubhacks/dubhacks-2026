@@ -1,6 +1,6 @@
 # ReMind
 
-**DubHacks 2026** · Community Kitchen track · Perceptron Robotics · SpaceXAI (Grok Voice) · MongoDB
+**DubHacks 2026** · Community Kitchen track · Perceptron Robotics · MongoDB
 
 ReMind is an AI companion that doesn't just talk: it helps people living with dementia take part in familiar activities through real-world interaction. A caregiver supervises each session. A conversational agent guides short, low-pressure activities, and an SO-101 robot arm moves everyday objects in response to the participant's choices.
 
@@ -48,7 +48,7 @@ Open http://localhost:3000/caregiver, approve a session for the synthetic **Rose
 
 Everything runs out of the box with a mock robot and in-memory storage. For the real setup, copy `.env.example` to `backend/.env` and `robot_worker/.env` and fill in:
 - `MONGODB_URI` to persist data (the caregiver screen shows whether data is being saved)
-- `XAI_API_KEY` + `XAI_MODEL` to use Grok for replies
+- `GEMINI_API_KEY` (brain, free tier) and `ELEVENLABS_API_KEY` (spoken replies) for the `/voice` agent
 - `ROBOT_MODE=perceptron` plus the Perceptron, SO-101 and camera settings, and run `uv sync --extra hardware` on the robot laptop
 
 Backend tests: `cd backend && uv run pytest`
@@ -65,6 +65,6 @@ Stop (button, "stop" in chat, or the caregiver) halts the session and robot. Fai
 
 ## Where to plug things in
 - **Real robot:** start with [robot_worker/README.md](robot_worker/README.md) (connect, calibrate, teleop, record, scripted moves). Code lives in `robot_worker/worker/robot.py` (LeRobot SO-101 adapter) and `executors.py` (`PerceptronExecutor`). Check the action-chunk format against your deployment's contract.
-- **Grok Voice:** the TODO in `frontend/app/participant/page.tsx` (mic input), with text replies from `backend/app/agent.py`.
+- **Voice agent:** `/voice` page + `backend/app/voice/` (Gemini tool calling, ElevenLabs speech).
 - **Photon:** the TODO on the `help` intent in `backend/app/main.py`.
 - **Activities / objects:** `backend/app/catalog.py` and `ALLOWED` in `robot_worker/worker/main.py`.
