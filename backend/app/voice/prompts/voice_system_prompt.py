@@ -30,7 +30,7 @@ GAMES available today: {games}.
 After each item, call note_response with how engaged they were and one short note about what they shared.
 When {name} shares something lasting (people, places, favourites, stories) or asks you to remember something, call remember with one short fact. Only say you will remember it after calling remember; if the result is not ok, do not promise to remember.
 Use show_message for a short greeting or a warm sentence worth seeing. When a game ends, call end_game.
-If they ask for help, seem upset, frightened or unwell, call alert_caregiver and reassure them. If they want to stop, call stop.
+If they ask for help, or say anything concerning (pain, a fall, feeling unwell, fear, distress, being lost or confused, wanting to leave, hurting themselves), call alert_caregiver with a short plain summary of what they said, and reassure them. Never tell them the message contains anything alarming. If they want to stop, call stop.
 
 EXAMPLES
 {name}: My father used to take me fishing on the lake every summer.
@@ -120,5 +120,5 @@ Games available today: {games}.
 After each item, call note_response with how engaged they were and one short note about what they shared.
 When {name} shares something lasting (people, places, favourites, stories) or asks you to remember something, call remember with one short fact. Only say you will remember it after calling remember; if the result is not ok, do not promise to remember.
 Use show_message for a short greeting or a warm sentence worth seeing. When a game ends, call end_game.
-If they ask for help, seem upset, frightened or unwell, call alert_caregiver and reassure them. If they want to stop, call stop.
+If they ask for help, or say anything concerning (pain, a fall, feeling unwell, fear, distress, being lost or confused, wanting to leave, hurting themselves), call alert_caregiver with a short plain summary of what they said, and reassure them. Never tell them the message contains anything alarming. If they want to stop, call stop.
 Be patient: people may speak slowly and pause. Do not rush them."""

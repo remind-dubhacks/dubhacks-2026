@@ -3,8 +3,11 @@ commands. Game ids are checked against GAMES, and the robot step goes through on
 
 Screen games (faces, proverbs, sounds) follow the Cognitive Stimulation Therapy session themes
 (Woods et al., Cochrane 2023). They only change `screen`, which the patient page renders as-is."""
+import asyncio
+import logging
 from dataclasses import dataclass, field
 
+from ..alerts import send_alert
 from ..games import faces, proverbs, sounds
 from ..games.reorder import MAX_TRIALS, evaluate, shuffled
 from ..vision.checker import read_order
@@ -36,6 +39,8 @@ class GameState:
     alerts: list[str] = field(default_factory=list)
     # Patient screen and screen games
     patient_name: str = ""
+    caregiver_phone: str = ""  # E.164; alerts are texted here when set
+    session_id: str = ""
     enabled_games: list[str] = field(default_factory=lambda: list(GAMES))
     item_index: int = 0
     screen: dict = field(default_factory=lambda: dict(REST))  # {kind: rest|message|photo|photo_caption, text?, photo?, caption?}
@@ -59,7 +64,7 @@ TOOL_SCHEMAS = [
         "name": "start_game", "description": "Start a game. For reorder the robot shuffles the objects; the others show a photo, a saying or play a sound. Only call when the person agrees to play.",
         "parameters": {"type": "object", "properties": {"game_id": {"type": "string", "enum": list(GAMES)}}, "required": ["game_id"]}}},
     {"type": "function", "function": {"name": "check_arrangement", "description": "Look at the table with the camera and judge the order. Call when the person says they are done.", "parameters": {"type": "object", "properties": {}}}},
-    {"type": "function", "function": {"name": "alert_caregiver", "description": "Message a caregiver. Use if the person asks for help, seems upset or confused.", "parameters": {"type": "object", "properties": {"reason": {"type": "string"}}, "required": ["reason"]}}},
+    {"type": "function", "function": {"name": "alert_caregiver", "description": "Text the caregiver. Use when the person says anything concerning: asks for help, pain, a fall, feeling unwell, fear, distress, confusion about where they are, wanting to leave, or hurting themselves. reason = a short plain summary of what they said and why it is concerning (one or two sentences, no diagnosis).", "parameters": {"type": "object", "properties": {"reason": {"type": "string"}}, "required": ["reason"]}}},
     {"type": "function", "function": {"name": "stop", "description": "Stop the game and the robot.", "parameters": {"type": "object", "properties": {}}}},
     {"type": "function", "function": {"name": "next_item", "description": "Screen games: move on to the next photo, saying or sound. Call after you have talked about the current one.", "parameters": {"type": "object", "properties": {}}}},
     {"type": "function", "function": {"name": "reveal", "description": "Screen games: show the answer on screen (the person's name, the full saying, or what the sound was). Use when the person is unsure or has answered.", "parameters": {"type": "object", "properties": {}}}},
@@ -87,7 +92,7 @@ TOOL_INFO = {
     "list_games": {"status": "real", "example": "What games can we play?", "does": "Lists the game catalog."},
     "start_game": {"status": "mock", "example": "Let's play the ordering game.", "does": "Starts a game. Screen games are real; the Reorder robot shuffle is simulated in software for now."},
     "check_arrangement": {"status": "mock", "example": "I'm done.", "does": "Judges the order, counts tries (max 3), explains mistakes. No camera yet, so it always reads the table as correct."},
-    "alert_caregiver": {"status": "placeholder", "example": "I need help.", "does": "Flags that help is needed. Recorded only; no message is sent yet."},
+    "alert_caregiver": {"status": "real", "example": "I need help.", "does": "Records a short summary for the nurse and texts the caregiver (Photon) if a phone number was entered."},
     "stop": {"status": "real", "example": "Stop.", "does": "Ends the game. Also triggered directly by the word 'stop', without the AI."},
     "next_item": {"status": "real", "example": "Let's see the next one.", "does": "Moves a screen game to its next item; clears the screen after the last."},
     "reveal": {"status": "real", "example": "Who is it?", "does": "Shows the name, the full saying, or what the sound was."},
@@ -134,6 +139,17 @@ def _show_item(state: GameState) -> dict:
     state.screen = _message("Listen.")
     return {**out, "answer": item["answer"],
             "note": "The sound plays as soon as you stop speaking. Say only 'Have a listen.' and then wait quietly."}
+
+
+_log = logging.getLogger("remind.alerts")
+_tasks: set[asyncio.Task] = set()
+
+
+def _bg(coro) -> None:
+    """Fire and forget: texting must never slow down or break the conversation."""
+    task = asyncio.create_task(coro)
+    _tasks.add(task)
+    task.add_done_callback(lambda t: (_tasks.discard(t), t.exception() and _log.warning("alert send failed: %r", t.exception())))
 
 
 async def run_tool(state: GameState, name: str, args: dict, table_order: list[str] | None) -> dict:
@@ -222,8 +238,12 @@ async def run_tool(state: GameState, name: str, args: dict, table_order: list[st
 
     if name == "alert_caregiver":
         state.help_requested = True
-        state.alerts.append(str(args.get("reason", "help requested"))[:200])
-        return {"ok": True, "note": "A caregiver has been notified."}
+        reason = str(args.get("reason", "help requested"))[:300]
+        state.alerts.append(reason[:200])
+        if not state.caregiver_phone:
+            return {"ok": True, "note": "Recorded for the nurse. No caregiver phone is set, so no text was sent."}
+        _bg(send_alert("help_requested", state.session_id, reason, to=state.caregiver_phone, patient=state.patient_name))
+        return {"ok": True, "note": "A caregiver is being texted."}
 
     if name == "stop":
         state.phase, state.result, state.screen, state.sound = "stopped", "stopped", dict(REST), None

@@ -2,6 +2,7 @@ import httpx
 from fastapi import APIRouter, HTTPException, Request, Response, WebSocket
 from pydantic import BaseModel
 
+from ..alerts import normalize_phone, send_text
 from ..config import settings
 from . import agent, live
 from .tools import GAMES, GameState, tool_catalog
@@ -72,6 +73,20 @@ async def tts(body: TtsIn) -> Response:
     except httpx.HTTPError as e:
         raise HTTPException(502, f"ElevenLabs failed: {e}") from e
     return Response(r.content, media_type="audio/mpeg")
+
+
+class TestTextIn(BaseModel):
+    phone: str
+
+
+@router.post("/test-text")
+async def test_text(body: TestTextIn) -> dict:
+    """Setup-card button: send one harmless text so the nurse can confirm Photon works before a session."""
+    phone = normalize_phone(body.phone)
+    error = await send_text(phone, "ReMind: this is a test message. Alerts for this caregiver will arrive here.")
+    if error:
+        raise HTTPException(502, error)
+    return {"ok": True}
 
 
 @router.get("/sessions")
