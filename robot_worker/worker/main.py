@@ -43,6 +43,7 @@ app.add_middleware(
 app.include_router(studio.router)
 app.include_router(vision_api.router)
 app.include_router(campaign.router)
+studio.live.start()  # always-live Rerun camera view (LIVE_VIEW=0 to turn off)
 jobs: dict[str, dict] = {}
 lock = threading.Lock()
 stop_event = threading.Event()

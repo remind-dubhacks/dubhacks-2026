@@ -286,7 +286,7 @@ class Campaign:
 
         if studio.proc.running:
             return None
-        studio.release_cameras()
+        studio.release_cameras()  # also steps the live view aside
         cam = int(os.getenv("SIDE_CAMERA_INDEX", "0"))
         cap = cv2.VideoCapture(cam)
         try:

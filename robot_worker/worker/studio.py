@@ -31,6 +31,8 @@ PERCEPTRON = os.getenv("PERCEPTRON_BASE_URL", "https://robotics.perceptron.inc")
 
 router = APIRouter(prefix="/studio")
 
+from .liveview import LiveView, display_args  # noqa: E402
+
 
 # ---------------------------------------------------------------- process manager
 
@@ -125,6 +127,12 @@ class Proc:
 
 
 proc = Proc()
+
+# Always-live Rerun camera view; steps aside whenever LeRobot or a preview needs the cameras.
+live = LiveView(
+    busy=lambda: proc.running or _preview_clients > 0 or camera_lock.locked(),
+    cameras=lambda: {"side": int(os.getenv("SIDE_CAMERA_INDEX", "0")), "wrist": int(os.getenv("WRIST_CAMERA_INDEX", "1"))},
+)
 
 
 def env(name: str, default: str = "") -> str:
@@ -261,8 +269,23 @@ def status() -> dict:
         },
         "cameras": {"side": int(env("SIDE_CAMERA_INDEX", "0")), "wrist": int(env("WRIST_CAMERA_INDEX", "1"))},
         "perceptron": {"configured": bool(env("PERCEPTRON_API_KEY"))},
+        "live": live.status(),
         "hfUser": env("HF_USER"),
     }
+
+
+class LiveIn(BaseModel):
+    on: bool
+
+
+@router.post("/live")
+def set_live(body: LiveIn) -> dict:
+    live.enabled = body.on
+    if body.on:
+        live.start()
+    else:
+        live.release(hold_off=0)
+    return live.status()
 
 
 @router.get("/logs")
@@ -293,8 +316,9 @@ _preview_gen = 0  # bumping this ends every open preview stream
 
 
 def release_cameras(timeout: float = 4.0) -> None:
-    """End preview streams so LeRobot can open the cameras."""
+    """End preview streams and the live view so LeRobot can open the cameras."""
     global _preview_gen
+    live.release(hold_off=8.0)
     _preview_gen += 1
     deadline = time.time() + timeout
     while (_preview_clients > 0 or camera_lock.locked()) and time.time() < deadline:
@@ -316,6 +340,7 @@ def list_cameras(max_index: int = 5) -> list[dict]:
     import cv2
 
     found = []
+    live.release()
     with camera_lock:
         for i in range(max_index):
             cap = cv2.VideoCapture(i)
@@ -332,6 +357,8 @@ def camera_stream(index: int):
     if proc.running:
         raise HTTPException(409, "cameras are in use by LeRobot; watch them in Rerun")
     import cv2
+
+    live.release()  # the live view steps aside while this preview runs
 
     def frames():
         global _preview_clients
@@ -369,7 +396,7 @@ def start_teleop(body: TeleopIn) -> dict:
     require_ports()
     cmd = ["lerobot-teleoperate", *robot_args(body.cameras), "--fps=30"]
     if body.rerun:
-        cmd.append("--display_data=true")
+        cmd += ["--display_data=true", *display_args()]
     proc.start("teleop", cmd)
     return proc.status()
 
@@ -400,6 +427,7 @@ def record_cmd(body: RecordIn) -> tuple[list[str], bool]:
         "--dataset.push_to_hub=false",
         "--dataset.no_stamp=true",  # LeRobot 0.6 otherwise makes a new timestamped folder per run, breaking resume
         f"--display_data={'true' if body.rerun else 'false'}",
+        *(display_args() if body.rerun else []),
         f"--play_sounds={'true' if body.sounds else 'false'}",
     ]
     if resume:
