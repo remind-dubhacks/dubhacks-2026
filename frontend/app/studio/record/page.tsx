@@ -117,7 +117,7 @@ export default function RecordPage() {
       {(() => {
         const plan = parsePlan(campaign?.current?.variation);
         if (!plan) return <p className="rec-msg">{campaign?.message || "Open the full Studio to set up a recording campaign."}</p>;
-        const resetting = phase.tone === "reset" || phase.tone === "wait";
+        const resetting = phase.tone === "reset";
         return (
           <div className="rec-steps">
             <div className="rec-steps-title">{plan.title}</div>
@@ -127,7 +127,7 @@ export default function RecordPage() {
               </ol>
             )}
             {plan.lineup.length > 0 && (
-              <div className={`rec-lineup ${resetting ? "focus" : ""}`}>
+              <div className={`rec-lineup ${resetting || phase.tone === "wait" ? "focus" : ""}`}>
                 <span className="small">{phase.tone === "reset" ? "Reset to:" : "Start from:"}</span>
                 {plan.lineup.map((x, i) => <span key={i} className="badge">{x}</span>)}
               </div>
