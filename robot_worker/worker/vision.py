@@ -30,19 +30,19 @@ WORK_WIDTH = 640  # frames are resized to this width before processing
 # OpenCV HSV: H 0-179, S 0-255, V 0-255. Each color is a list of (lo, hi) ranges.
 PALETTE: dict[str, list[tuple[tuple[int, int, int], tuple[int, int, int]]]] = {
     "red": [((0, 120, 70), (7, 255, 255)), ((172, 120, 70), (179, 255, 255))],
-    "orange": [((8, 120, 90), (19, 255, 255))],
-    "yellow": [((20, 90, 100), (34, 255, 255))],
+    "orange": [((8, 160, 90), (19, 255, 255))],  # wood tables sit at S~120-150, so demand more
+    "yellow": [((20, 165, 100), (34, 255, 255))],
     "green": [((35, 70, 50), (85, 255, 255))],
     "blue": [((90, 90, 50), (130, 255, 255))],
     "purple": [((131, 60, 50), (147, 255, 255))],
     "pink": [((148, 50, 110), (171, 255, 255)), ((0, 30, 170), (7, 119, 255)), ((172, 30, 170), (179, 119, 255))],
-    "white": [((0, 0, 200), (179, 35, 255))],
+    "white": [((0, 0, 130), (179, 70, 255))],  # warm room light makes white look beige
 }
 DRAW = {  # BGR for annotations
     "red": (40, 40, 220), "orange": (0, 140, 255), "yellow": (0, 220, 240), "green": (60, 180, 60),
     "blue": (220, 120, 30), "purple": (180, 60, 140), "pink": (180, 105, 255), "white": (230, 230, 230),
 }
-MIN_AREA_FRAC = 0.0015  # ignore specks
+MIN_AREA_FRAC = 0.0006  # ignore specks (side-camera props are small: keycap top ~0.1% of frame)
 MAX_AREA_FRAC = {"white": 0.08}  # large white regions are background (table, wall, paper)
 DEFAULT_MAX_AREA_FRAC = 0.35
 MATCH_THRESHOLD = 0.55
@@ -83,10 +83,23 @@ def prepare(frame: np.ndarray) -> np.ndarray:
     return frame
 
 
-def color_mask(hsv: np.ndarray, color: str) -> np.ndarray:
+def background_mask(hsv: np.ndarray) -> np.ndarray:
+    """Pixels that look like the table: close to the frame's median color, which the table
+    dominates. Lets a wood (yellow/orange) or white table be ignored automatically."""
+    med = np.median(hsv.reshape(-1, 3), axis=0)
+    dh = np.abs(hsv[..., 0].astype(np.int16) - int(med[0]))
+    dh = np.minimum(dh, 180 - dh)
+    ds = np.abs(hsv[..., 1].astype(np.int16) - int(med[1]))
+    dv = np.abs(hsv[..., 2].astype(np.int16) - int(med[2]))
+    return ((dh <= 7) & (ds <= 45) & (dv <= 70)).astype(np.uint8) * 255
+
+
+def color_mask(hsv: np.ndarray, color: str, background: np.ndarray | None = None) -> np.ndarray:
     mask = np.zeros(hsv.shape[:2], np.uint8)
     for lo, hi in PALETTE[color]:
         mask |= cv2.inRange(hsv, np.array(lo, np.uint8), np.array(hi, np.uint8))
+    if background is not None:
+        mask &= cv2.bitwise_not(background)
     k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, k)
     return cv2.morphologyEx(mask, cv2.MORPH_CLOSE, k, iterations=2)
@@ -95,10 +108,11 @@ def color_mask(hsv: np.ndarray, color: str) -> np.ndarray:
 def detect_colors(frame: np.ndarray, colors: list[str] | None = None) -> list[Blob]:
     """frame must already be prepare()d (BGR)."""
     hsv = cv2.cvtColor(cv2.GaussianBlur(frame, (5, 5), 0), cv2.COLOR_BGR2HSV)
+    background = background_mask(hsv)
     total = frame.shape[0] * frame.shape[1]
     blobs: list[Blob] = []
     for color in colors or list(PALETTE):
-        mask = color_mask(hsv, color)
+        mask = color_mask(hsv, color, background)
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         for c in contours:
             area = cv2.contourArea(c)
@@ -207,9 +221,10 @@ class Library:
             box = np.zeros(frame.shape[:2], np.uint8)
             box[y : y + h, x : x + w] = 255
             hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+            background = background_mask(hsv)
             colored = np.zeros_like(box)
             for color in PALETTE:
-                colored |= color_mask(hsv, color)
+                colored |= color_mask(hsv, color, background)
             obj = colored & box
             mask = obj if cv2.countNonZero(obj) > 0.1 * w * h else box
         color = dominant_color(frame, mask)
