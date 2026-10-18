@@ -316,7 +316,7 @@ async def camera_order(objects: list[str]) -> list[str] | None:
 
 # ---------------------------------------------------------------- robot moves + live table watching
 
-ROBOT_TIMEOUT_S = float(os.getenv("ROBOT_SHUFFLE_TIMEOUT_S", "90"))
+ROBOT_TIMEOUT_S = float(os.getenv("ROBOT_SHUFFLE_TIMEOUT_S", "240"))  # a slow scripted shuffle takes ~2 min
 YES_RE = re.compile(r"\b(yes|yeah|yep|please|ok(ay)?|sure|show)\b", re.I)
 
 
