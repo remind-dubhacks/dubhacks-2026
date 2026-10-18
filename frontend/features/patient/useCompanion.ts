@@ -96,7 +96,7 @@ export function useCompanion() {
     });
     liveRef.current = live;
     try {
-      await live.start({ name, games: games.join(","), ...(participantId ? { participantId } : {}) });
+      await live.start({ games: games.join(","), ...(name ? { name } : {}), ...(participantId ? { participantId } : {}) });
       setStatus("live");
     } catch (e) {
       liveRef.current = null;
