@@ -1,0 +1,9 @@
+# Replace the placeholders with GitHub usernames and uncomment. See docs/OWNERSHIP.md.
+# /robot_worker/                 @MEMBER1
+# /backend/app/games/            @MEMBER2
+# /backend/app/vision/           @MEMBER2
+# /backend/app/alerts/           @MEMBER4
+# /backend/app/                  @MEMBER3
+# /backend/tests/                @MEMBER3
+# /frontend/                     @MEMBER4
+# /docs/design/                  @MEMBER4
