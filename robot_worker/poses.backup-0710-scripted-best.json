@@ -1,0 +1,157 @@
+{
+  "_note": "Best-performing set on the arm (2026-10-18): slot 4 from the first teach (04:09), above_s1/s2 re-taught straight up (04:55). Slot-4 re-picks with it: 5 ok / 2 missed; later variants did worse. Demo-median poses kept in poses.backup-*-demo.json.",
+  "poses": {
+    "home": {
+      "shoulder_pan.pos": -9.01,
+      "shoulder_lift.pos": -13.71,
+      "elbow_flex.pos": 57.67,
+      "wrist_flex.pos": 84.62,
+      "wrist_roll.pos": 70.73,
+      "gripper.pos": 37.98
+    },
+    "above_s1": {
+      "shoulder_pan.pos": -14.99,
+      "shoulder_lift.pos": -37.19,
+      "elbow_flex.pos": 16.62,
+      "wrist_flex.pos": 71.52,
+      "wrist_roll.pos": 88.04,
+      "gripper.pos": 37.62
+    },
+    "down_s1": {
+      "shoulder_pan.pos": -13.05,
+      "shoulder_lift.pos": 27.25,
+      "elbow_flex.pos": 0.88,
+      "wrist_flex.pos": 74.24,
+      "wrist_roll.pos": 78.46,
+      "gripper.pos": 22.18
+    },
+    "above_s2": {
+      "shoulder_pan.pos": 2.33,
+      "shoulder_lift.pos": -45.71,
+      "elbow_flex.pos": 15.65,
+      "wrist_flex.pos": 71.6,
+      "wrist_roll.pos": 96.4,
+      "gripper.pos": 37.62
+    },
+    "down_s2": {
+      "shoulder_pan.pos": -1.1,
+      "shoulder_lift.pos": 21.98,
+      "elbow_flex.pos": 9.05,
+      "wrist_flex.pos": 72.04,
+      "wrist_roll.pos": 87.78,
+      "gripper.pos": 23.82
+    },
+    "above_s3": {
+      "shoulder_pan.pos": 15.96,
+      "shoulder_lift.pos": -2.81,
+      "elbow_flex.pos": 9.49,
+      "wrist_flex.pos": 70.37,
+      "wrist_roll.pos": 107.82,
+      "gripper.pos": 30.54
+    },
+    "down_s3": {
+      "shoulder_pan.pos": 15.08,
+      "shoulder_lift.pos": 27.08,
+      "elbow_flex.pos": 1.41,
+      "wrist_flex.pos": 69.67,
+      "wrist_roll.pos": 107.74,
+      "gripper.pos": 21.36
+    },
+    "above_s4": {
+      "shoulder_pan.pos": 27.56,
+      "shoulder_lift.pos": 7.47,
+      "elbow_flex.pos": -6.33,
+      "wrist_flex.pos": 69.67,
+      "wrist_roll.pos": 107.91,
+      "gripper.pos": 33.53
+    },
+    "down_s4": {
+      "shoulder_pan.pos": 27.56,
+      "shoulder_lift.pos": 32.09,
+      "elbow_flex.pos": -6.95,
+      "wrist_flex.pos": 69.67,
+      "wrist_roll.pos": 115.03,
+      "gripper.pos": 23.52
+    }
+  },
+  "sequences": {
+    "tea": [
+      "home",
+      {
+        "gripper": 60
+      },
+      "above_tea",
+      "grasp_tea",
+      {
+        "gripper": 5
+      },
+      {
+        "wait": 0.5
+      },
+      "above_tea",
+      "above_tray",
+      "release_tray",
+      {
+        "gripper": 60
+      },
+      {
+        "wait": 0.5
+      },
+      "above_tray",
+      "home"
+    ],
+    "coffee": [
+      "home",
+      {
+        "gripper": 60
+      },
+      "above_coffee",
+      "grasp_coffee",
+      {
+        "gripper": 5
+      },
+      {
+        "wait": 0.5
+      },
+      "above_coffee",
+      "above_tray",
+      "release_tray",
+      {
+        "gripper": 60
+      },
+      {
+        "wait": 0.5
+      },
+      "above_tray",
+      "home"
+    ]
+  },
+  "camera_x": {
+    "1": 0.8475,
+    "2": 0.6669,
+    "3": 0.4151,
+    "4": 0.3106
+  },
+  "camera_xy": {
+    "1": [
+      0.8475,
+      0.3443
+    ],
+    "2": [
+      0.6669,
+      0.3043
+    ],
+    "3": [
+      0.4151,
+      0.3212
+    ],
+    "4": [
+      0.3106,
+      0.3411
+    ]
+  },
+  "slot4_cal": [
+    0.3106,
+    0.3411
+  ]
+}
