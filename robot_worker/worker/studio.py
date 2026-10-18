@@ -266,8 +266,22 @@ def clear_fault(body: ClearIn) -> dict:
     return {"arm": body.arm, "motor": body.motor, "cleared": not err, "tempC": temp}
 
 
+ROBOT_BUSY = False  # set by main while a robot job runs: never open the motor port then
+_last_health: dict = {}
+
+
 @router.get("/health")
 def health() -> dict:
+    """Motor health. While a job runs, returns the last reading instead of opening the serial port
+    a second time (two programs on one port corrupted the job's packets mid-move)."""
+    global _last_health
+    if ROBOT_BUSY and _last_health:
+        return {**_last_health, "busy": True}
+    _last_health = _health()
+    return _last_health
+
+
+def _health() -> dict:
     if proc.running:
         raise HTTPException(409, "arms are in use by LeRobot")
     return {arm: motor_health(env(key)) if Path(env(key)).exists() else {"error": "not connected"}
