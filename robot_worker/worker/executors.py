@@ -342,6 +342,12 @@ class ScriptedExecutor:
             spots = load_spots(data)
             if frame is not None and spots:
                 problems = spot_problems(find_xy(frame), start + [None], spots)
+                for _ in range(2):  # one odd frame shouldn't stop the robot: look again
+                    if not problems:
+                        break
+                    time.sleep(0.5)
+                    again = self._frame()
+                    problems = spot_problems(find_xy(again), start + [None], spots) if again is not None else problems
                 if problems:
                     self.last_check = {"spots": problems}
                     self.say(" ".join(p["say"] for p in problems))
