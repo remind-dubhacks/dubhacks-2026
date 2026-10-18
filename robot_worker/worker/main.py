@@ -77,6 +77,7 @@ def run(job_id: str, spec: dict) -> None:
     global active_job
     job = jobs[job_id]
     job.update(status="running", startedAt=now(), events=[])
+    studio.ROBOT_BUSY = True  # keep motor-health polls off the serial port during the move
     executors.EVENT_HOOK = lambda e: job["events"].append(e)
     executors.emit("moving")
     try:
@@ -95,6 +96,7 @@ def run(job_id: str, spec: dict) -> None:
         log.exception("job %s crashed", job_id)
         job.update(status="failed", errorCode="worker_exception", error=str(e))
     finally:
+        studio.ROBOT_BUSY = False
         executors.EVENT_HOOK = None
         job["finishedAt"] = now()
         with lock:
