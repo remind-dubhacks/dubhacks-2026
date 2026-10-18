@@ -73,12 +73,14 @@ export async function fetchTools(): Promise<ToolInfo[]> {
 
 export type CompanionSession = {
   _id: string;
+  participantId?: string | null;
   patientName: string;
   startedAt: string;
   endedAt: string;
   gamesPlayed: string[];
   observations: Observation[];
   alerts: string[];
+  acknowledgedAt?: string | null;
 };
 
 export async function fetchSessions(): Promise<CompanionSession[]> {
