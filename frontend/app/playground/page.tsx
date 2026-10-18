@@ -1,9 +1,10 @@
 "use client";
 
-// Playground: run Remember the Order by tapping (no microphone) and watch, in real time, what the
-// camera sees, what the robot is doing, and when and why the companion speaks. Same engine and robot
-// path as the patient screen (backend/app/play.py).
-import { useCallback, useEffect, useRef, useState } from "react";
+// Playground: play Remember the Order by voice with the Gemini companion (or tap/type), and watch in real
+// time what the camera sees, what the robot is doing, and when and why the companion speaks. Same live relay
+// and robot path as the patient screen; it also follows a patient session when one is running.
+import { useEffect, useRef, useState } from "react";
+import { LiveVoice } from "@/lib/liveVoice";
 import { API } from "@/lib/api";
 import "./playground.css";
 import { Board, Keycap } from "@/features/shared/Keycap";
@@ -57,83 +58,45 @@ function describe(e: Ev): LogLine | null {
   }
 }
 
-async function post(path: string, body: unknown) {
-  const r = await fetch(`${API}/api/play/${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  if (!r.ok) throw new Error(`${path}: ${r.status}`);
-  return r.json();
-}
-
 export default function Playground() {
-  const [sid] = useState(() => `play-${Math.random().toString(36).slice(2, 8)}`);
   const [mover, setMover] = useState<"simulated" | "robot">("simulated");
-  const [ex, setEx] = useState<Exercise | null>(null);
-  const [log, setLog] = useState<LogLine[]>([]);
+  const [voice, setVoice] = useState<"off" | "connecting" | "on">("off");
   const [typed, setTyped] = useState("");
   const [robot, setRobot] = useState<Robot | null>(null);
-  const [camera, setCamera] = useState<boolean | null>(null);
   const [err, setErr] = useState("");
   const [frame, setFrame] = useState(0);
   const [live, setLive] = useState<{ active: boolean; name?: string; game?: string; state?: { exercise?: Exercise }; feed?: FeedItem[] } | null>(null);
-  const [follow, setFollow] = useState(true);
   const [camOk, setCamOk] = useState(true);
-  const lastRobot = useRef("");
-  const add = (l: LogLine | null) => l && setLog((ls) => [l, ...ls].slice(0, 80));
+  const liveRef = useRef<LiveVoice | null>(null);
 
-  const take = useCallback((state: { exercise?: Exercise }) => {
-    const e = state.exercise ?? null;
-    setEx(e);
-    const r = e?.robot;
-    const key = `${r?.status}/${r?.last}`;
-    if (r?.status && key !== lastRobot.current) {
-      lastRobot.current = key;
-      const what = r.status === "moving" ? (r.last === "paused_for_hand" ? "paused: a hand is on the table" : r.last === "checking" ? "checking the row with the camera" : "moving") :
-        r.status === "done" ? `finished (camera check: ${r.check?.verdict ?? "n/a"})` : `needs help (${r.error}); caregiver texted`;
-      add({ t: now(), who: "robot", text: what, tone: r.status === "failed" ? "warn" : r.status === "done" ? "ok" : undefined });
-    }
-  }, []);
-
-  const speak = (text: string) => {
-    add({ t: now(), who: "agent", text });
-    try { const u = new SpeechSynthesisUtterance(text); u.rate = 0.92; speechSynthesis.cancel(); speechSynthesis.speak(u); } catch { /* no voice */ }
-  };
-
+  // Talk to the game with Matthew's Gemini live voice (same relay as the patient screen): it listens on the
+  // microphone, speaks, and runs Remember the Order through its tools. Taps and typing are sent as text.
   const start = async () => {
-    setErr(""); setLog([]); lastRobot.current = "";
+    setErr("");
+    liveRef.current?.stop();
+    setVoice("connecting");
+    const lv = new LiveVoice({
+      onUser: () => {},
+      onAiDelta: () => {},
+      onAiDone: () => {},
+      onTool: () => {},
+      onError: (msg) => setErr(msg),
+      onClose: () => { if (liveRef.current === lv) { liveRef.current = null; setVoice("off"); } },
+    });
+    liveRef.current = lv;
     try {
-      const r = await post("start", { sessionId: sid, mover });
-      take(r.state);
-      if (r.result?.say) speak(r.result.say);
-    } catch (e) { setErr(String(e)); }
+      await lv.start({ games: "order_memory", name: "Playground", mover, source: "playground" });
+      setVoice("on");
+      lv.sendText("(The nurse opened the robot playground. Start Remember the Order now: call start_game with game_id order_memory.)");
+    } catch (e) {
+      liveRef.current = null;
+      setVoice("off");
+      setErr(e instanceof Error && e.name === "NotAllowedError" ? "Microphone permission was blocked" : "Could not start the voice session");
+    }
   };
-
-  const say = async (text: string) => {
-    if (!text.trim()) return;
-    add({ t: now(), who: "you", text });
-    try {
-      const r = await post("say", { sessionId: sid, text });
-      take(r.state);
-      if (r.result?.say) speak(r.result.say);
-    } catch (e) { setErr(String(e)); }
-  };
-
-  // Live loop: the table watcher decides when to speak; we just poll and show everything it noticed.
-  useEffect(() => {
-    if (!ex || ex.phase === "done") return;
-    if (!(ex.watching || ex.robot?.status === "moving")) return;
-    let stop = false;
-    const id = setInterval(async () => {
-      if (stop) return;
-      try {
-        const r = await post("watch", { sessionId: sid });
-        if (stop) return;
-        setCamera(r.camera !== false);
-        (r.events as Ev[]).forEach((e) => add(describe(e)));
-        take(r.state);
-        if (r.say) speak(r.say);
-      } catch { /* backend busy */ }
-    }, 1200);
-    return () => { stop = true; clearInterval(id); };
-  }, [ex?.watching, ex?.robot?.status, ex?.phase, sid, take]); // eslint-disable-line react-hooks/exhaustive-deps
+  const stop = () => { liveRef.current?.stop(); liveRef.current = null; setVoice("off"); };
+  const say = (text: string) => { if (text.trim()) liveRef.current?.sendText(text); };
+  useEffect(() => () => liveRef.current?.stop(), []);
 
   useEffect(() => {
     const get = () => fetch(`${API}/api/play/robot`).then((r) => r.json()).then(setRobot).catch(() => setRobot({ reachable: false }));
@@ -142,17 +105,18 @@ export default function Playground() {
     return () => clearInterval(id);
   }, []);
 
-  // Follow the real patient session when one is running (read-only).
+  // The running voice session (this playground's, or a patient's) as the backend sees it, refreshed live.
   useEffect(() => {
     let alive = true;
     const get = () => fetch(`${API}/api/play/live`).then((r) => r.json()).then((d) => { if (alive) setLive(d); }).catch(() => {});
     get();
-    const id = setInterval(get, 1500);
+    const id = setInterval(get, 1200);
     return () => { alive = false; clearInterval(id); };
   }, []);
-  const following = !!live?.active && follow && !ex;
-  const viewEx: Exercise | null = following ? (live?.state?.exercise ?? null) : ex;
-  const viewLog: LogLine[] = following ? (live?.feed ?? []).map(fromFeed).filter((l): l is LogLine => !!l).reverse() : log;
+  const mine = voice === "on";
+  const viewEx: Exercise | null = live?.active ? (live.state?.exercise ?? null) : null;
+  const viewLog: LogLine[] = (live?.feed ?? []).map(fromFeed).filter((l): l is LogLine => !!l).reverse();
+  const camera = robot?.reachable ? camOk : null;
 
   // Live camera: a fresh annotated frame about once a second while the robot is reachable.
   useEffect(() => {
@@ -204,21 +168,20 @@ export default function Playground() {
           <span className="pg-card-label">Camera</span>
           <span className="pg-card-value"><span className={`pg-dot ${camera ? "on" : camera === false ? "off" : "wait"}`} />
             {camera === null ? "starts with the game" : camera ? "watching the table" : "can't see the table"}</span>
-          <span className="pg-muted small">Judges a placement after 2 s of stillness with no hand on the table.</span>
         </div>
         <div className="pg-face pg-card pg-card-controls">
-          <span className="pg-card-label">Test game</span>
+          <span className="pg-card-label">Voice game (Gemini)</span>
           <div className="pg-segment" role="radiogroup" aria-label="Who moves the keyrings">
             {(["simulated", "robot"] as const).map((m) => (
               <button key={m} role="radio" aria-checked={mover === m} className={mover === m ? "on" : ""}
-                disabled={(!!ex && ex.phase !== "done") || (m === "robot" && !robot?.ready)} onClick={() => setMover(m)}>
+                disabled={voice !== "off" || (m === "robot" && !robot?.ready)} onClick={() => setMover(m)}>
                 {m === "simulated" ? "Simulated" : "Robot arm"}
               </button>
             ))}
           </div>
           <div className="pg-row-buttons">
-            <button className="pg-start" onClick={start}>{ex ? "Restart" : "Start game"}</button>
-            {ex && <button className="pg-chip" onClick={() => post("stop", { sessionId: sid }).then(() => { setEx(null); add({ t: now(), who: "you", text: "Stopped" }); })}>Stop</button>}
+            {voice === "off" ? <button className="pg-start" onClick={start} disabled={live?.active}>🎙 Start voice game</button>
+              : <button className="pg-start" onClick={stop}>{voice === "connecting" ? "Connecting…" : "■ End voice game"}</button>}
           </div>
         </div>
       </section>
@@ -228,9 +191,8 @@ export default function Playground() {
       {live?.active && (
         <div className="pg-face pg-live">
           <span className="pg-pulse" aria-hidden="true" />
-          <span className="pg-stat">Live patient session: {live.name}{live.game ? ` · ${live.game.replace("_", " ")}` : ""}</span>
-          {ex ? <span className="pg-muted">Stop your test game to follow it.</span>
-            : <button className="pg-chip" onClick={() => setFollow((f) => !f)}>{follow ? "Following live (read-only)" : "Follow it here"}</button>}
+          <span className="pg-stat">{mine ? "Your voice game" : `Live patient session: ${live.name}`}{live.game ? ` · ${live.game.replace("_", " ")}` : ""}</span>
+          <span className="pg-muted">{mine ? "Talk to it: the microphone is on." : "Following live (read-only)."}</span>
         </div>
       )}
 
@@ -239,7 +201,7 @@ export default function Playground() {
           {!viewEx ? (
             <div className="pg-empty">
               <Board row={["black keycap", "white keycap", "purple keycap"]} labels={false} size={64} />
-              <p>{live?.active ? `${live.name} is doing another activity right now.` : "Start a test game, or start Remember the Order on the patient screen to follow it here live."}</p>
+              <p>{live?.active ? `${live.name} is chatting; the game starts when they ask for it.` : "Press Start voice game and talk to ReMind, or start Remember the Order on the patient screen to follow it here."}</p>
             </div>
           ) : (
             <>
@@ -257,7 +219,7 @@ export default function Playground() {
               {viewEx.say && (
                 <div className="pg-bubble"><span className="pg-avatar" aria-hidden="true">R</span><p>{viewEx.say}</p></div>
               )}
-              {!following && (<>
+              {mine && (<>
                 <div className="pg-actions">
                   {viewEx.options.map((o) => <button key={o} className="pg-option" onClick={() => say(o)}><Keycap name={o} size={30} />{o}</button>)}
                   {viewEx.phase === "study" && <button className="pg-chip" onClick={() => say(viewEx.answer.join(", "))}>Say them back</button>}
@@ -265,7 +227,7 @@ export default function Playground() {
                   {(viewEx.phase === "reminisce" || viewEx.phase === "recall") && <button className="pg-chip" onClick={() => say("skip")}>Skip</button>}
                 </div>
                 <form className="pg-say-form" onSubmit={(e) => { e.preventDefault(); say(typed); setTyped(""); }}>
-                  <div className="pg-well"><input value={typed} onChange={(e) => setTyped(e.target.value)} placeholder="Type what the player says…" /></div>
+                  <div className="pg-well"><input value={typed} onChange={(e) => setTyped(e.target.value)} placeholder="Or type what the player says…" /></div>
                   <button type="submit" className="pg-chip">Say</button>
                 </form>
               </>)}

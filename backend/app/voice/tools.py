@@ -555,6 +555,7 @@ async def run_tool(state: GameState, name: str, args: dict, table_order: list[st
             state.phase = "exercise"
             step = state.fr.start()
             state.fr_step = step.to_dict()
+            log_feed(state, "agent", step.say)
             return {"ok": True, "say": step.say, "expect": step.expect, "phase": step.phase, "moves": step.moves,
                     "note": "Say the 'say' text. The app runs every later turn of this game itself."}
         if gid in SCREEN_GAMES:

@@ -209,6 +209,10 @@ async def run(ws: WebSocket) -> None:
     phone = normalize_phone(ws.query_params.get("phone") or "")
     state = GameState(patient_name=name, enabled_games=games, caregiver_phone=phone, session_id=uuid.uuid4().hex)
     LIVE[state.session_id] = state  # the playground can follow this session
+    if ws.query_params.get("mover") in ("robot", "simulated", "caregiver"):  # the playground picks who moves the keyrings
+        state.mover = ws.query_params["mover"]
+    if ws.query_params.get("source") == "playground":
+        state.objects = ["black keycap", "white keycap", "purple keycap"]
     nudge_after = SLOW_NUDGE_AFTER_S if needs_slow_pacing(profile) else NUDGE_AFTER_S
     started_at = datetime.now(timezone.utc)
     user_buf = ai_buf = ""
