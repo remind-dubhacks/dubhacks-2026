@@ -37,6 +37,7 @@ from .robot_client import RobotWorkerError
 from .vision import router as vision_router
 from .voice import memory
 from .voice import router as voice_router
+from .play import router as play_router  # noqa: E402
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("remind")
@@ -134,6 +135,7 @@ app.add_middleware(
 )
 app.include_router(vision_router)
 app.include_router(voice_router)
+app.include_router(play_router)
 
 
 def store(request: Request) -> Store:

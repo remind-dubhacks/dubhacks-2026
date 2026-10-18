@@ -304,6 +304,7 @@ async def run(ws: WebSocket) -> None:
         and have the companion speak the cue at the right moment (decided by games/table_watch.py)."""
         nonlocal last_activity
         ticks = 0
+        last_robot = None
         while True:
             await asyncio.sleep(TABLE_EVERY_S)
             ticks += 1
@@ -318,6 +319,10 @@ async def run(ws: WebSocket) -> None:
             except Exception:  # noqa: BLE001 - the camera must never break the call
                 log.exception("table watch failed")
                 continue
+            robot_now = (state.robot or {}).get("last"), (state.robot or {}).get("status")
+            if res.get("events") or robot_now != last_robot:  # keep the patient screen's table live
+                await ws.send_json({"type": "tool", "name": "watch_table", "args": {}, "result": {"events": res.get("events")}, "state": state.view()})
+                last_robot = robot_now
             if res.get("events"):
                 last_activity = time.monotonic()  # the person is busy at the table: don't nudge
             if res.get("say"):

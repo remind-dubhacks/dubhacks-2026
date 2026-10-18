@@ -5,7 +5,8 @@ export type Screen =
   | { kind: "rest" }
   | { kind: "message"; text: string }
   | { kind: "photo"; photo: string }
-  | { kind: "photo_caption"; photo: string; caption: string };
+  | { kind: "photo_caption"; photo: string; caption: string }
+  | { kind: "table"; row: (string | null)[]; status: string; say: string; options: string[]; phase: string };
 
 export type Observation = { game: string | null; item: string | null; engagement: "engaged" | "some" | "withdrawn"; note: string };
 

@@ -244,3 +244,35 @@ def calibrate_slots(body: CalibrateIn) -> dict:
     data["camera_xy"] = spots
     save_poses(data)
     return {"camera_x": cal, "camera_xy": spots, "source": source}
+
+
+@router.get("/row.jpg")
+def row_jpg():
+    """The side camera with what the game sees drawn on it: each keyring with its slot, and a red frame
+    while a hand is on the table. For the playground's live view (refresh about once a second)."""
+    from fastapi.responses import Response
+
+    from .row_check import find_xy, read_row
+    from .table_view import hands_in
+
+    frame, source = side_frame()
+    if frame is None:
+        raise HTTPException(503, f"no side-camera frame ({source})")
+    img = frame.copy()
+    h, w = img.shape[:2]
+    row = read_row(frame)
+    slot_of = {o: i + 1 for i, o in enumerate(row["order"]) if o}
+    colours = {"black": (40, 40, 40), "white": (235, 235, 235), "purple": (200, 110, 140)}
+    for name, (x, y) in find_xy(frame).items():
+        cx, cy = int(x * w), int(y * h)
+        cv2.circle(img, (cx, cy), 34, colours.get(name, (0, 200, 0)), 4)
+        label = f"{name} - slot {slot_of[name]}" if name in slot_of else name
+        cv2.putText(img, label, (cx - 60, cy - 44), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (20, 20, 20), 4)
+        cv2.putText(img, label, (cx - 60, cy - 44), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
+    if hands_in(frame):
+        cv2.rectangle(img, (3, 3), (w - 4, h - 4), (40, 40, 220), 8)
+        cv2.putText(img, "HAND ON TABLE", (16, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (40, 40, 220), 3)
+    ok, jpg = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 70])
+    if not ok:
+        raise HTTPException(500, "could not encode frame")
+    return Response(jpg.tobytes(), media_type="image/jpeg", headers={"Cache-Control": "no-store"})

@@ -77,6 +77,8 @@ class GameState:
     robot: dict = field(default_factory=dict)  # {status: moving|done|failed, purpose, error}
     pending_say: list[str] = field(default_factory=list)  # said by the app when a robot move finishes
     overheat_alerted: bool = False
+    objects: list[str] = field(default_factory=list)  # props for table games ("" = FIND_REMEMBER_OBJECTS)
+    mover: str = ""  # who moves the objects in this session: robot | simulated | caregiver ("" = FIND_REMEMBER_MOVER)
 
     def view(self) -> dict:
         v = {
@@ -88,15 +90,49 @@ class GameState:
         if isinstance(self.fr, OrderMemory):
             v["exercise"] = {
                 "step": self.fr_step, "row": self.fr.current, "answer": self.fr.original,  # answer: caregiver view only
-                "level": self.fr.level, "round": self.fr.round, "mover": FR_MOVER, "summary": self.fr.summary(),
+                "level": self.fr.level, "round": self.fr.round, "mover": mover_of(self), "summary": self.fr.summary(),
                 "robot": self.robot, "watching": self.watch is not None and not self.watch.done,
+                "say": self.fr_step.get("say", ""), "options": self.fr_step.get("options", []), "phase": self.fr.phase,
             }
+            if self.phase == "exercise":
+                v["screen"] = table_screen(self)
         elif self.fr is not None:
             v["exercise"] = {
                 "step": self.fr_step, "layout": self.fr.layout, "tray": self.fr.tray, "target": self.fr.target,
                 "level": self.fr.level, "round": self.fr.round, "mover": FR_MOVER, "summary": self.fr.summary(),
             }
         return v
+
+
+def mover_of(state: "GameState") -> str:
+    return state.mover or FR_MOVER
+
+
+ROBOT_STATUS = {
+    "moving": "The robot is mixing them up. Hands on your lap, please.",
+    "paused_for_hand": "The robot is waiting for the table to be clear.",
+    "checking": "The robot is checking the row.",
+}
+
+
+def table_screen(state: "GameState") -> dict:
+    """What the patient screen shows during Remember the Order: the row as the game knows it, what the
+    robot is doing, and the current prompt with its choices (tap or say)."""
+    om: OrderMemory = state.fr
+    robot = state.robot or {}
+    if robot.get("status") == "moving":
+        status = ROBOT_STATUS.get(robot.get("last") or "moving", ROBOT_STATUS["moving"])
+    elif robot.get("status") == "failed":
+        status = "A caregiver is coming to help with the objects."
+    elif om.phase == "restore":
+        status = "Your turn: put them back the way they were."
+    elif om.phase == "study":
+        status = "Let's look at the row together."
+    else:
+        status = ""
+    show_answer = om.phase in ("study", "reminisce", "recall", "done")
+    return {"kind": "table", "row": list(om.original if show_answer else om.current), "status": status,
+            "say": state.fr_step.get("say", ""), "options": state.fr_step.get("options", []), "phase": om.phase}
 
 
 TOOL_SCHEMAS = [
@@ -411,9 +447,9 @@ async def _om_advance(state: GameState, said: str, table_order: list[str] | None
     phase = om.phase
     if phase == "study":
         step = om.say_back(said)
-        if FR_MOVER == "robot" and om.last_shuffle_id:
+        if mover_of(state) == "robot" and om.last_shuffle_id:
             _robot_task(state, om.last_shuffle_id, "shuffle")  # after_shuffle comes when the robot is done
-        elif FR_MOVER == "simulated":
+        elif mover_of(state) == "simulated":
             nxt = om.after_shuffle()
             step.say, step.expect, step.phase = f"{step.say} {nxt.say}", nxt.expect, nxt.phase
             _start_watch(state)
@@ -424,7 +460,7 @@ async def _om_advance(state: GameState, said: str, table_order: list[str] | None
             return {"ok": True, "say": "The robot is still mixing them up. Hands on your lap for a moment.", "expect": "moved", "phase": "shuffle", "moves": []}
         step = om.after_shuffle()
         _start_watch(state)
-    elif phase == "restore" and om.offered_show and FR_MOVER == "robot" and YES_RE.search(said):
+    elif phase == "restore" and om.offered_show and mover_of(state) == "robot" and YES_RE.search(said):
         row = await camera_row()
         current = row["order"] if row and all(row["order"]) else om.current
         sid = fix_for(current, om.original)
@@ -474,7 +510,7 @@ async def run_tool(state: GameState, name: str, args: dict, table_order: list[st
             if gid == "find_remember":
                 state.fr = FindRemember(objects=FR_OBJECTS)
             else:  # the robot's trained skill starts from one layout, so robot rounds start there
-                state.fr = OrderMemory(objects=FR_OBJECTS, fixed_start=ROBOT_START if FR_MOVER == "robot" else None)
+                state.fr = OrderMemory(objects=state.objects or FR_OBJECTS, fixed_start=ROBOT_START if mover_of(state) == "robot" else None)
             state.watch, state.robot, state.pending_say = None, {}, []
             state.phase = "exercise"
             step = state.fr.start()

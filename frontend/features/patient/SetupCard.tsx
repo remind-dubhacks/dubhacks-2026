@@ -8,18 +8,17 @@
 // memories from it. "Someone else…" (or no residents to pick from) sends a typed first name instead.
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { api, type Participant } from "@/lib/api";
+import { API, api, type Participant } from "@/lib/api";
 import { sendTestText } from "@/lib/voice";
 
 const GAMES = [
   { id: "faces", label: "Famous faces", on: true, icon: "M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18Z M8.5 14.5c1 1.3 2.2 2 3.5 2s2.5-.7 3.5-2 M9 9.5h.01 M15 9.5h.01" },
   { id: "proverbs", label: "Sayings", on: true, icon: "M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-4.6A8 8 0 1 1 21 12Z" },
   { id: "sounds", label: "Sounds", on: true, icon: "M11 5 6 9H3v6h3l5 4V5Z M15.5 8.5a5 5 0 0 1 0 7 M18.5 5.5a9 9 0 0 1 0 13" },
-  { id: "reorder", label: "Reorder (needs the robot)", on: false, icon: "M7 4v16 M3 8l4-4 4 4 M17 20V4 M13 16l4 4 4-4" },
+  { id: "order_memory", label: "Remember the Order (robot)", on: false, icon: "M7 4v16 M3 8l4-4 4 4 M17 20V4 M13 16l4 4 4-4" },
 ];
-// Reorder stays disabled until a robot can be connected.
-const REORDER_AVAILABLE = false;
-const available = (id: string) => id !== "reorder" || REORDER_AVAILABLE;
+// The robot game can be picked only while the backend reports the robot arm ready.
+const ROBOT_GAMES = new Set(["order_memory"]);
 const SAVED = "remind.patient.setup";
 const GUEST = "guest";
 const NURSE_PASSWORD = "123";
@@ -89,7 +88,17 @@ export function SetupCard({ live, connecting, error, onStart, onEnd, onHide }: P
   const [phone, setPhone] = useState(""); // caregiver's phone: gets a text when something concerning is said
   const [testMsg, setTestMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [testing, setTesting] = useState(false);
-  const [games, setGames] = useState<string[]>(GAMES.filter((g) => g.on && available(g.id)).map((g) => g.id));
+  const [robotReady, setRobotReady] = useState(false);
+  const available = (id: string) => !ROBOT_GAMES.has(id) || robotReady;
+  const [games, setGames] = useState<string[]>(GAMES.filter((g) => g.on && !ROBOT_GAMES.has(g.id)).map((g) => g.id));
+  useEffect(() => {
+    let alive = true;
+    const check = () => fetch(`${API}/api/health`).then((r) => r.json())
+      .then((h) => { if (alive) setRobotReady(Boolean(h?.robot?.ready)); }).catch(() => { if (alive) setRobotReady(false); });
+    check();
+    const id = setInterval(check, 15000);
+    return () => { alive = false; clearInterval(id); };
+  }, []);
   const [residents, setResidents] = useState<Participant[] | null>(null); // null while loading
   const [choice, setChoice] = useState(""); // a resident's _id, or GUEST
   const [gateOpen, setGateOpen] = useState(false);

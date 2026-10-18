@@ -12,7 +12,7 @@ import { UrgentPanel, type Alert } from "./UrgentPanel";
 import "./nurse.css";
 
 const FONT = "https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:wght@400;600&display=swap";
-export const GAME_NAMES: Record<string, string> = { faces: "Famous faces", proverbs: "Sayings", sounds: "Sounds", reorder: "Reorder" };
+export const GAME_NAMES: Record<string, string> = { faces: "Famous faces", proverbs: "Sayings", sounds: "Sounds", reorder: "Reorder", order_memory: "Remember the Order" };
 
 export const displayName = (p: Participant) => p.careProfile?.preferredName || p.alias;
 

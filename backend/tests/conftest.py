@@ -1,6 +1,13 @@
-import pytest
+import os
 
-from app.config import settings
+# Tests never depend on the local backend/.env for game setup or the database (load_dotenv won't override these).
+os.environ["FIND_REMEMBER_MOVER"] = "simulated"
+os.environ["FIND_REMEMBER_OBJECTS"] = "blue keychain,lipstick,white keycap"
+os.environ["MONGODB_URI"] = ""
+
+import pytest  # noqa: E402
+
+from app.config import settings  # noqa: E402
 
 
 @pytest.fixture(autouse=True)

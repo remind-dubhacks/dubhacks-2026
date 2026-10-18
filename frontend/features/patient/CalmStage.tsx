@@ -10,6 +10,32 @@ const FONT = "https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Nex
 
 type Layer = { id: number; screen: Screen; visible: boolean };
 
+// Keyring colours for the robot game (game object names from backend/app/games/shuffles.py).
+const SWATCH: Record<string, string> = { black: "#23262a", white: "#f6f3ea", purple: "#8d72c9" };
+const swatch = (name: string) => SWATCH[name.split(" ")[0]] ?? "#c9cfc6";
+const SPOTS = ["Left", "Middle", "Right"];
+
+// Remember the Order: the row as the camera and the game see it, what the robot is doing, and the current
+// prompt. Updated live by the relay as the person moves things on the table.
+function TableView({ screen }: { screen: Extract<Screen, { kind: "table" }> }) {
+  const spots = screen.row.length === 2 ? ["Left", "Right"] : SPOTS;
+  return (
+    <div className="calm-table">
+      {screen.status && <p className="calm-table-status">{screen.status}</p>}
+      <div className="calm-row">
+        {screen.row.map((o, i) => (
+          <div key={i} className="calm-slot">
+            <span className="calm-key" style={{ background: o ? swatch(o) : "transparent" }} />
+            <span className="calm-slot-name">{o ?? "?"}</span>
+            <span className="calm-slot-spot">{spots[i]}</span>
+          </div>
+        ))}
+      </div>
+      {screen.options.length > 0 && <p className="calm-table-choice">{screen.options.join("  ·  or  ·  ")}</p>}
+    </div>
+  );
+}
+
 function Content({ screen }: { screen: Screen }) {
   switch (screen.kind) {
     case "message":
@@ -23,6 +49,8 @@ function Content({ screen }: { screen: Screen }) {
           <p className="calm-caption">{screen.caption}</p>
         </>
       );
+    case "table":
+      return <TableView screen={screen} />;
     default:
       return null;
   }

@@ -295,3 +295,15 @@
   .calm-setup .key { height: max(48px, calc(92 * var(--u))); }
   .calm-setup .helper { margin-top: 0; }
 }
+
+
+/* Remember the Order: a row of three large keyring tiles, the robot's status above, choices below. */
+.calm-table { display: flex; flex-direction: column; align-items: center; gap: min(4vh, 32px); width: min(92vw, 1100px); }
+.calm-table-status { margin: 0; font-size: min(5vw, 4.2vh); text-align: center; }
+.calm-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); gap: min(3vw, 32px); width: 100%; }
+.calm-slot { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: min(3vh, 28px) 8px;
+  border-radius: var(--photo-radius); background: rgba(255, 255, 255, 0.55); box-shadow: var(--photo-shadow); }
+.calm-key { width: min(14vw, 18vh); aspect-ratio: 1; border-radius: 22%; border: 2px solid rgba(30, 43, 38, 0.18); }
+.calm-slot-name { font-size: min(4vw, 3.6vh); font-weight: 600; text-align: center; }
+.calm-slot-spot { font-size: min(3vw, 2.8vh); color: var(--ink-muted); }
+.calm-table-choice { margin: 0; font-size: min(4.4vw, 3.8vh); font-weight: 600; text-align: center; }
