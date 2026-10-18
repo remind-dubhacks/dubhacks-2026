@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import StudioVoice from "./StudioVoice";
+import VisionPanel from "./VisionPanel";
 import { studio, workerUrl, type ArmStatus, type Dataset, type MotorHealth, type StudioStatus, type UploadState } from "@/lib/studio";
 
 const MIN_EPISODES = 50; // Perceptron mentors: ~50 demonstrations is the practical minimum
@@ -221,6 +222,8 @@ export default function Studio() {
           </div>
         )}
       </section>
+
+      <VisionPanel busy={busy} cameras={status?.cameras ?? { side: 0, wrist: 1 }} onError={setErr} />
 
       <section>
         <h2>2. Teleoperate</h2>

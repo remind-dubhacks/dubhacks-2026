@@ -19,3 +19,5 @@ __pycache__/
 venv/
 *.tsbuildinfo
 robot_worker/camera_snapshots/
+robot_worker/vision_library/
+robot_worker/vision_memory.json

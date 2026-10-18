@@ -6,7 +6,7 @@
  * - Anything that moves the arm needs a spoken/typed "confirm"; "stop" acts immediately. */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Dataset, MotorHealth, StudioStatus, UploadState } from "@/lib/studio";
+import { studio, type Dataset, type MotorHealth, type StudioStatus, type UploadState } from "@/lib/studio";
 
 const MIN_EPISODES = 50;
 
@@ -79,7 +79,7 @@ const GUIDE = {
     "Tape down the arm base, the side camera, the tray, and the two pickup spots. Keep the same lighting and table for training and the demo. Plug the cameras into the fast USB adapter so frames do not drop.",
   usb: "If the camera lags, the cameras and arms are sharing one slow USB hub. Plug the side camera directly into the Mac, or use the Perceptron adapter.",
   safety: "Keep hands out of the follower's reach while it moves. Say stop at any time. The power switch is the emergency stop.",
-  help: "You can ask: how do I train, how many episodes, tips, what objects, what's next, or status. Commands: start teleop, start recording, stop, check motors.",
+  help: "You can ask: how do I train, how many episodes, tips, what objects, what's next, status, what do you see, or where is the pink pen. Commands: start teleop, start recording, stop, check motors, and remember this as a name.",
 };
 
 // ---------------------------------------------------------------- component
@@ -257,6 +257,40 @@ export default function StudioVoice({ status, logs, datasets, uploads, rec, acti
         }
       }
 
+      // ---- vision: what do you see / where is X / remember this as X
+      const remember = t.match(/^(?:remember|learn|teach)(?: this| that| it)?(?: as| is)? (?:the |a |my )?(.+)$/) ?? t.match(/^this is (?:the |a |my )?(.+)$/);
+      if (remember) {
+        const cam = status?.cameras.side ?? 0;
+        try {
+          const r = await studio.teach(cam, remember[1]);
+          return say(`Got it. I'll remember the ${r.name}${r.color ? `, the ${r.color} one` : ""}. That's ${r.examples} example${r.examples === 1 ? "" : "s"}.`);
+        } catch (e) {
+          return say(`I couldn't learn that. ${e instanceof Error ? e.message : ""} Start live detection on the side camera first.`);
+        }
+      }
+      const where = t.match(/where(?: is|'s| are)? (?:the |my |a )?(.+?)\??$/);
+      if (where) {
+        const mem = await studio.memory().catch(() => []);
+        const q = where[1].replace(/\?$/, "");
+        const hit = mem.find((m) => m.name.toLowerCase() === q) ?? mem.find((m) => m.name.toLowerCase().includes(q) || q.includes(m.name.toLowerCase()));
+        if (!hit) return say(`I haven't seen the ${q} yet. Teach it in the vision panel, or show it to the camera.`);
+        const when = hit.secondsAgo < 5 ? "right now" : hit.secondsAgo < 60 ? `${Math.round(hit.secondsAgo)} seconds ago` : `${Math.round(hit.secondsAgo / 60)} minutes ago`;
+        return say(`I saw the ${hit.name} ${when}, at the ${hit.where} of the ${hit.camera === status?.cameras.wrist ? "wrist" : "side"} camera.`);
+      }
+      if (has(t, "what do you see", "what can you see", "what's on the table", "what is on the table", "what do you remember")) {
+        const cam = status?.cameras.side ?? 0;
+        const live = await studio.detections(cam).catch(() => null);
+        if (live && live.detections.length) {
+          const named = live.detections.filter((d) => d.name).map((d) => `the ${d.name} at the ${d.where}`);
+          const colors = live.detections.filter((d) => !d.name).map((d) => d.color);
+          const extra = colors.length ? ` Also ${colors.length} other ${[...new Set(colors)].join(" and ")} object${colors.length > 1 ? "s" : ""}.` : "";
+          return say((named.length ? `I see ${named.join(", ")}.` : "I don't recognize anything I've been taught.") + extra);
+        }
+        const mem = await studio.memory().catch(() => []);
+        if (!mem.length) return say("The camera isn't live and I don't remember anything yet. Start live detection in the vision panel.");
+        return say(`The camera isn't live. From memory: ${mem.slice(0, 4).map((m) => `the ${m.name} was at the ${m.where}`).join(", ")}.`);
+      }
+
       if (has(t, "next", "what now", "what should i do")) return say(nextStep());
       if (has(t, "status", "what's the robot", "what is the robot", "situation", "doing", "how's it going")) return say(describe());
       if (has(t, "how many episode", "how many demo", "how much data")) return say(GUIDE.episodes + (dataset ? ` You have ${dataset.episodes ?? 0} so far.` : ""));
@@ -320,7 +354,7 @@ export default function StudioVoice({ status, logs, datasets, uploads, rec, acti
         </form>
       </div>
       <div className="row small" style={{ marginTop: 8 }}>
-        {["What's next?", "Status", "How do I train?", "How many episodes?", "Tips", "What objects?", "Check motors"].map((q) => (
+        {["What's next?", "Status", "How do I train?", "How many episodes?", "Tips", "What objects?", "Check motors", "What do you see?", "Where is the pink pen?"].map((q) => (
           <button key={q} className="chip" onClick={() => handle(q)}>{q}</button>
         ))}
       </div>

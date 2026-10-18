@@ -36,6 +36,27 @@ export type Dataset = {
 
 export type MotorHealth = { ok: boolean; tempC?: number; problem?: string | null };
 
+export type Detection = {
+  color: string;
+  name: string | null;
+  score: number;
+  bbox: [number, number, number, number];
+  center: [number, number];
+  areaFrac: number;
+  where: string;
+};
+
+export type Remembered = {
+  name: string;
+  lastSeen: number;
+  secondsAgo: number;
+  camera: number;
+  where: string;
+  color: string;
+  timesSeen: number;
+  score: number;
+};
+
 export type UploadState = { phase: string; done: number; total: number; datasetId?: string; error?: string };
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
@@ -69,6 +90,14 @@ export const studio = {
     post<{ resume: boolean }>("/studio/record", body),
   stop: () => post("/studio/stop"),
   datasets: () => req<Dataset[]>("/studio/datasets"),
+  visionStreamUrl: (i: number) => `${WORKER}/studio/vision/stream/${i}.mjpg?t=${Date.now()}`,
+  detections: (camera: number) => req<{ camera: number; age: number; detections: Detection[] }>(`/studio/vision/detections?camera=${camera}`),
+  teach: (camera: number, name: string, bbox?: number[]) => post<{ name: string; color: string | null; examples: number }>("/studio/vision/teach", { camera, name, bbox }),
+  library: () => req<{ name: string; examples: number; color: string | null }[]>("/studio/vision/library"),
+  thumbUrl: (name: string) => `${WORKER}/studio/vision/library/${encodeURIComponent(name)}/thumb.jpg`,
+  forget: (name: string) => req<{ removed: number }>(`/studio/vision/library/${encodeURIComponent(name)}`, { method: "DELETE" }),
+  memory: () => req<Remembered[]>("/studio/vision/memory"),
+  clearMemory: () => req<{ cleared: boolean }>("/studio/vision/memory", { method: "DELETE" }),
   upload: (repo: string) => post<UploadState>("/studio/perceptron/upload", { repo }),
   uploads: () => req<Record<string, UploadState>>("/studio/perceptron/uploads"),
   registerHf: (repoId: string) => post<Record<string, unknown>>("/studio/perceptron/datasets/hf", { repoId }),
