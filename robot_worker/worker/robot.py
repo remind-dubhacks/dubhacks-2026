@@ -53,7 +53,7 @@ def camera_config() -> dict:
 
 
 class SO101:
-    def __init__(self, cameras: bool = True, calibrate: bool = False) -> None:
+    def __init__(self, cameras: bool = True, calibrate: bool = False, read_only: bool = False) -> None:
         SO101Follower, SO101FollowerConfig = _import_follower()
         config = SO101FollowerConfig(
             port=os.environ["SO101_PORT"],
@@ -67,7 +67,11 @@ class SO101:
             disable_torque_on_disconnect=False,
         )
         self.robot = SO101Follower(config)
-        self.robot.connect(calibrate=calibrate)
+        if read_only:
+            # Open the bus only: skips configure(), which would switch torque on and lock the arm.
+            self.robot.bus.connect()
+        else:
+            self.robot.connect(calibrate=calibrate)
         if not self.robot.is_calibrated:
             self.robot.disconnect()
             raise RuntimeError("Follower arm is not calibrated. Run: uv run python scripts/arm.py calibrate follower")

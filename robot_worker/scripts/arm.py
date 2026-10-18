@@ -104,13 +104,13 @@ def cmd_record(a):
 # ---------- scripted control ----------
 
 
-def connect() -> SO101:
+def connect(read_only: bool = False) -> SO101:
     print("Connecting to follower arm…")
-    return SO101(cameras=False, calibrate=True)
+    return SO101(cameras=False, calibrate=not read_only, read_only=read_only)
 
 
 def cmd_read(a):
-    arm = connect()
+    arm = connect(read_only=True)  # motors stay as they are, so you can move the arm by hand
     try:
         while True:
             print("\r" + fmt(arm.joints()), end="", flush=True)
