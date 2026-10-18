@@ -16,7 +16,7 @@ class FakeWorker:
         return {"ready": self.ready, "busy": False, "mode": "fake"}
 
     async def submit(self, job_id, action_id, object_id):
-        assert (action_id, object_id) == ("shuffle", "reorder_set")  # fixed, never user/LLM text
+        assert (action_id, object_id) == (settings.robot_shuffle_action, settings.robot_shuffle_object)  # fixed, never user/LLM text
         self.jobs[job_id] = {"status": "running"}
         return self.jobs[job_id]
 

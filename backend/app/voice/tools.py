@@ -145,9 +145,9 @@ async def start_shuffle(state: GameState) -> dict:
             state.phase = "idle"
             return {"ok": False, "error": "The robot is not ready right now. Tell the person kindly and offer to try again in a moment."}
         job_id = uuid.uuid4().hex
-        await robot_client.submit(job_id, "shuffle", "reorder_set")
+        await robot_client.submit(job_id, settings.robot_shuffle_action, settings.robot_shuffle_object)
     except robot_client.RobotWorkerError as e:
-        log.warning("robot worker unavailable: %s", e)
+        log.warning("robot worker unavailable or does not accept the shuffle job: %s", e)
         state.phase = "idle"
         return {"ok": False, "error": "The robot is not available right now. Tell the person kindly; a caregiver can help."}
     state.phase, state.job_id = "shuffling", job_id

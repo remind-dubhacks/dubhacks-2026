@@ -12,6 +12,10 @@ class Settings:
     cors_origins: list[str] = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
     # false = shuffle in software only (no robot worker needed)
     use_robot_worker: bool = os.getenv("USE_ROBOT_WORKER", "true").lower() == "true"
+    # The robot code is owned by the robotics team; we adapt to it. Set these to whichever job
+    # (action, object) the worker's allowlist exposes for shuffling the game objects.
+    robot_shuffle_action: str = os.getenv("ROBOT_SHUFFLE_ACTION", "shuffle")
+    robot_shuffle_object: str = os.getenv("ROBOT_SHUFFLE_OBJECT", "reorder_set")
     gemini_api_key: str = os.getenv("GEMINI_API_KEY", "")
     gemini_model: str = os.getenv("GEMINI_MODEL", "gemini-flash-latest")
     gemini_fallback_model: str = os.getenv("GEMINI_FALLBACK_MODEL", "gemini-flash-lite-latest")  # used on 429/503
