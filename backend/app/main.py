@@ -97,7 +97,13 @@ async def seed(store: Store) -> None:
 
 
 app = FastAPI(title="ReMind API", lifespan=lifespan)
-app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins, allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins,
+    allow_origin_regex=settings.cors_origin_regex,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 app.include_router(vision_router)
 app.include_router(voice_router)
 

@@ -31,6 +31,7 @@ PERCEPTRON = os.getenv("PERCEPTRON_BASE_URL", "https://robotics.perceptron.inc")
 
 router = APIRouter(prefix="/studio")
 
+from . import voice  # noqa: E402
 from .liveview import LiveView, display_args  # noqa: E402
 
 
@@ -52,15 +53,30 @@ class Proc:
         self.exit_code: int | None = None
         self.stopped_by_user = False
         self.lock = threading.Lock()
+        self.plan = {"episodes": 0, "episode_s": 0, "reset_s": 0}
+        self._timers: list[threading.Timer] = []
 
     @property
     def running(self) -> bool:
         return self.p is not None and self.p.poll() is None
 
+    def _after(self, seconds: float, text: str) -> None:
+        if seconds > 0:
+            t = threading.Timer(seconds, voice.speak, args=(text,))
+            t.daemon = True
+            t.start()
+            self._timers.append(t)
+
+    def _clear_timers(self) -> None:
+        for t in self._timers:
+            t.cancel()
+        self._timers = []
+
     def log(self, line: str) -> None:
         with self.lock:
             self.seq += 1
             self.logs.append((self.seq, line))
+        before = (self.phase, self.episode)
         if m := re.search(r"Recording episode (\d+)", line):
             self.episode, self.phase = int(m.group(1)), "recording"
         elif "Reset the environment" in line:
@@ -69,6 +85,24 @@ class Proc:
             self.phase = "re-record"
         elif "Stop recording" in line or "Exiting" in line:
             self.phase = "finishing"
+        if self.kind == "record" and (self.phase, self.episode) != before:
+            self._narrate()
+
+    def _narrate(self) -> None:
+        """Spoken prompts for the operator (Mac voice), timed from LeRobot's own phase lines."""
+        self._clear_timers()
+        n, total = (self.episode or 0) + 1, self.plan["episodes"] or "?"
+        if self.phase == "recording":
+            voice.speak(f"Episode {n} of {total}. Go.")
+            self._after(self.plan["episode_s"] - 5, "Five seconds.")
+        elif self.phase == "reset":
+            left = (self.plan["episodes"] or n) - n
+            voice.speak(f"Reset the objects. {left} to go." if left > 0 else "Reset the objects. Last one done.")
+            self._after(self.plan["reset_s"] - 3, "Get ready.")
+        elif self.phase == "re-record":
+            voice.speak("Redo that one.")
+        elif self.phase == "finishing":
+            voice.speak("Saving.")
 
     def start(self, kind: str, cmd: list[str]) -> None:
         if self.running:
@@ -78,6 +112,8 @@ class Proc:
             raise HTTPException(500, f"{cmd[0]} not found; run `uv sync --extra hardware`")
         self.kind, self.cmd, self.started, self.episode, self.phase, self.exit_code = kind, cmd, time.time(), None, None, None
         self.stopped_by_user = False
+        arg = lambda k: next((int(a.split("=", 1)[1]) for a in cmd if a.startswith(f"--dataset.{k}=")), 0)  # noqa: E731
+        self.plan = {"episodes": arg("num_episodes"), "episode_s": arg("episode_time_s"), "reset_s": arg("reset_time_s")}
         self.log(f"$ {' '.join(cmd)}")
         self.p = subprocess.Popen(
             [exe, *cmd[1:]],
@@ -99,6 +135,7 @@ class Proc:
         self.exit_code = self.p.wait()
         self.log(f"[{self.kind} exited with code {self.exit_code}]")
         self.phase = "done"
+        self._clear_timers()
 
     def stop(self) -> None:
         if not self.running:
@@ -211,6 +248,13 @@ def clear_fault(body: ClearIn) -> dict:
         temp, _, _ = pk.read1ByteTxRx(ph, mid, 63)
         if temp >= 65:
             raise HTTPException(409, f"{body.motor} is hot ({temp}°C); let it cool first")
+        lo, _, _ = pk.read2ByteTxRx(ph, mid, 9)
+        hi, _, _ = pk.read2ByteTxRx(ph, mid, 11)
+        signed = -(pos & 0x7FFF) if pos & 0x8000 else pos  # Feetech: sign-magnitude, bit 15 = negative
+        if not (lo <= signed <= hi):
+            # Turning torque on here would make the joint swing back toward its limit: never do that.
+            raise HTTPException(409, f"{body.motor} is outside its calibrated range ({signed} vs {lo}–{hi}). "
+                                     "Gently move it back toward the middle by hand, then unplug the arm's DC power for 10 s.")
         pk.write2ByteTxRx(ph, mid, 42, pos)  # target = current position
         pk.write1ByteTxRx(ph, mid, 40, 1)
         time.sleep(0.4)
@@ -230,7 +274,17 @@ def health() -> dict:
             for arm, key in (("follower", "SO101_PORT"), ("leader", "LEADER_PORT"))}
 
 
+MIN_FREE_GB = float(os.getenv("MIN_FREE_DISK_GB", "1.0"))
+
+
+def require_disk() -> None:
+    free = shutil.disk_usage(DATA_HOME if DATA_HOME.exists() else Path.home()).free / 1e9
+    if free < MIN_FREE_GB:
+        raise HTTPException(507, f"Only {free:.1f} GB disk free; free up space before recording (need {MIN_FREE_GB:.0f}+ GB)")
+
+
 def require_ports() -> None:
+    require_disk()
     for name in ("SO101_PORT", "LEADER_PORT"):
         if not env(name) or not Path(env(name)).exists():
             raise HTTPException(400, f"{name} is not set or not connected ({env(name) or 'empty'})")
@@ -270,7 +324,9 @@ def status() -> dict:
         "cameras": {"side": int(env("SIDE_CAMERA_INDEX", "0")), "wrist": int(env("WRIST_CAMERA_INDEX", "1"))},
         "perceptron": {"configured": bool(env("PERCEPTRON_API_KEY"))},
         "live": live.status(),
+        "serverVoice": voice.ENABLED,
         "hfUser": env("HF_USER"),
+        "diskFreeGB": round(shutil.disk_usage(Path.home()).free / 1e9, 1),
     }
 
 
@@ -414,7 +470,14 @@ class RecordIn(BaseModel):
 def record_cmd(body: RecordIn) -> tuple[list[str], bool]:
     if not re.fullmatch(r"[\w.-]+/[\w.-]+", body.repo):
         raise HTTPException(422, "repo must look like user/name")
-    resume = (DATA_HOME / body.repo / "meta/info.json").exists()
+    root = DATA_HOME / body.repo
+    info = root / "meta/info.json"
+    if root.exists() and (not info.exists() or episode_count(body.repo) == 0):
+        # Leftover from a run stopped before any episode was saved: set it aside, start fresh.
+        aside = DATA_HOME / "_set_aside" / f"{body.repo.replace('/', '__')}_{int(time.time())}"
+        aside.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(root), str(aside))
+    resume = info.exists()
     cmd = [
         "lerobot-record",
         *robot_args(True),
@@ -426,6 +489,11 @@ def record_cmd(body: RecordIn) -> tuple[list[str], bool]:
         "--dataset.fps=30",
         "--dataset.push_to_hub=false",
         "--dataset.no_stamp=true",  # LeRobot 0.6 otherwise makes a new timestamped folder per run, breaking resume
+        f"--dataset.root={root}",  # LeRobot 0.6 requires an explicit root to resume (append to) a dataset
+        # Encode video while recording instead of writing every frame as a PNG first: a 50 s
+        # two-camera episode otherwise needs gigabytes of temporary images and can fill the disk.
+        "--dataset.streaming_encoding=true",
+        "--dataset.encoder_threads=2",
         f"--display_data={'true' if body.rerun else 'false'}",
         *(display_args() if body.rerun else []),
         f"--play_sounds={'true' if body.sounds else 'false'}",

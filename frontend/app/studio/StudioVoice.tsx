@@ -151,6 +151,7 @@ export default function StudioVoice({ status, logs, datasets, uploads, rec, camp
     const before = prev.current;
     prev.current = { kind: p.kind, running: p.running, episode: p.episode, phase: p.phase };
     if (!before) return; // don't narrate the state we found on page load
+    if (status?.serverVoice) return; // the robot laptop is already speaking these prompts
 
     const byCampaign = !!campaign?.running;
     const total = byCampaign && campaign?.current ? campaign.current.episodes : rec.episodes;
@@ -202,9 +203,10 @@ export default function StudioVoice({ status, logs, datasets, uploads, rec, camp
     }
     if (campaign.messageSeq > campaignSeq.current) {
       campaignSeq.current = campaign.messageSeq;
+      if (status?.serverVoice) return; // spoken by the robot laptop
       if (campaign.message) say(campaign.message, { interrupt: campaign.state === "paused" || campaign.state === "error" });
     }
-  }, [campaign, say]);
+  }, [campaign, say, status?.serverVoice]);
 
   // ---------- warnings from the log
 

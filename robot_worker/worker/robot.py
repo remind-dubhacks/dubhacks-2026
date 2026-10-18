@@ -83,6 +83,13 @@ class SO101:
         state = [float(obs[j]) for j in JOINTS]
         return state, _png(obs["side"]), _png(obs["wrist"])
 
+    def side_frame(self):
+        """Latest side-camera frame as BGR (for the hands check), without a full observation."""
+        import cv2
+
+        cam = self.robot.cameras.get("side")
+        return cv2.cvtColor(cam.async_read(), cv2.COLOR_RGB2BGR) if cam is not None else None
+
     def act(self, action: list[float]) -> None:
         self.robot.send_action(dict(zip(JOINTS, action)))
 
@@ -138,13 +145,17 @@ def run_sequence(arm: SO101, name: str, stop: threading.Event | None = None, spe
     steps = data["sequences"].get(name)
     if steps is None:
         raise KeyError(f"no sequence named {name!r} in {POSES_FILE}")
+    run_steps(arm, steps, data["poses"], stop, speed_scale, name)
+
+
+def run_steps(arm: SO101, steps: list, poses: dict, stop: threading.Event | None = None, speed_scale: float = 1.0, name: str = "steps") -> None:
     for step in steps:
         if stop is not None and stop.is_set():
             raise Stopped()
         if isinstance(step, str):
-            if step not in data["poses"]:
+            if step not in poses:
                 raise KeyError(f"sequence {name!r} uses unknown pose {step!r}")
-            arm.move_to(data["poses"][step], stop, speed_scale)
+            arm.move_to(poses[step], stop, speed_scale)
         elif "gripper" in step:
             arm.gripper(float(step["gripper"]), stop)
         elif "wait" in step:

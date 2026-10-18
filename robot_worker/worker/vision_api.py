@@ -152,3 +152,41 @@ def detect_image(body: ImageIn) -> dict:
     frame = prepare(frame)
     h, w = frame.shape[:2]
     return {"detections": [b.to_dict(w, h) for b in recognize(frame, library)]}
+
+
+# ---------------------------------------------------------------- memory game: table row + hands
+
+side_cam = None
+
+
+def side_frame() -> tuple[np.ndarray | None, str]:
+    """Freshest side-camera frame from whatever already has the camera open."""
+    import os
+
+    from .table_view import SideCamera
+
+    global side_cam
+    index = int(os.getenv("SIDE_CAMERA_INDEX", "0"))
+    with latest_lock:
+        cur = latest.get(index)
+    if cur and time.time() - cur["t"] < 1.5:
+        return cur["frame"], "detection-stream"
+    if studio.proc.running:
+        return None, "busy"
+    if side_cam is None:
+        side_cam = SideCamera(index)
+    studio.live.release()
+    frame, age = side_cam.latest()
+    return (frame, "side-camera") if frame is not None and age < 1.5 else (None, "no-frame")
+
+
+@router.get("/row")
+def row() -> dict:
+    """Keyring order (slot 1 first, using black/white/purple) and whether a hand is on the table.
+    `order` is all None unless all three keyrings are seen: the game then says 'unsure', never guesses."""
+    from .table_view import look
+
+    frame, source = side_frame()
+    if frame is None:
+        raise HTTPException(503, f"no side-camera frame ({source})")
+    return {**look(frame), "source": source, "t": time.time()}

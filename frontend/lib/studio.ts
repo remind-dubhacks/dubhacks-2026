@@ -20,6 +20,7 @@ export type StudioStatus = {
   leader: ArmStatus;
   cameras: { side: number; wrist: number };
   perceptron: { configured: boolean };
+  serverVoice?: boolean; // the robot laptop speaks recording prompts itself
   hfUser: string;
 };
 
