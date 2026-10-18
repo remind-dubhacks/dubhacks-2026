@@ -224,7 +224,8 @@ class Campaign:
         # 1. Setup prompt + vision check
         self.ready.clear()
         self.skip_check.clear()
-        self.say(f"Batch {k + 1}: {n} episodes. {variation.rstrip('. ')}. Press Ready when set.", "setup")
+        spoken = variation.split(" Start:")[0].rstrip(". ")  # moves only; the screen shows the full layout
+        self.say(f"Batch {k + 1}: {n} episodes. {spoken}. Set the starting position, then press Ready.", "setup")
         if self.config.visionCheck:
             self._vision_check(t)
         while not self.ready.wait(0.3):
