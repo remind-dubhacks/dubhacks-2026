@@ -685,3 +685,8 @@ def test_spot_check_knows_each_keyrings_shape():
     ref = {1: (0.8627, 0.1972), 2: (0.6166, 0.2048), 3: (0.3446, 0.4367)}
     after = {"purple": (0.8627, 0.1972 + (0.4367 - 0.201)), "white": (0.6166, 0.2048), "black": (0.3446, 0.201)}
     assert slot_locate.spot_problems(after, ["purple", "white", "black", None], ref) == []
+
+
+def test_demo_can_limit_the_robot_to_verified_shuffles(monkeypatch):
+    monkeypatch.setenv("ROBOT_SHUFFLES", "swap_lr,swap_lm")
+    assert set(shuffle_math.allowlist()) == {("shuffle", "swap_lr"), ("shuffle", "swap_lm")}
