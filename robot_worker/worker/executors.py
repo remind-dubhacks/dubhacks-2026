@@ -399,6 +399,9 @@ class ScriptedExecutor:
             move(poses["home"])
             row[b - 1], row[a - 1] = obj, None
         move(poses["home"])
+        if "rest" in poses:  # fold out of the camera's view for the final check
+            move(poses["rest"])
+            time.sleep(0.5)
 
     def execute(self, spec: dict, stop: threading.Event) -> None:
         from .robot import run_sequence

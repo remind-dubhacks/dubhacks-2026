@@ -103,8 +103,8 @@ class SO101:
     # ----- scripted control -----
 
     def joints(self) -> dict[str, float]:
-        obs = self.robot.get_observation()
-        return {j: float(obs[j]) for j in JOINTS}
+        pos = self.robot.bus.sync_read("Present_Position", num_retry=5)
+        return {j: float(pos[j.removesuffix(".pos")]) for j in JOINTS}
 
     def torque(self, on: bool) -> None:
         bus = self.robot.bus

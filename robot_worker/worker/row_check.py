@@ -17,12 +17,16 @@ import cv2
 import numpy as np
 
 RANGES: dict[str, list[tuple[tuple[int, int, int], tuple[int, int, int]]]] = {
-    "black": [((0, 0, 0), (179, 255, 55))],
-    "white": [((18, 22, 85), (36, 90, 200))],
-    "purple": [((108, 25, 50), (145, 255, 230))],
+    # Wide enough for the camera's auto white balance (cream keycap read H 18-54, purple H 102-145).
+    "black": [((0, 0, 0), (179, 255, 72))],
+    "white": [((15, 15, 70), (65, 95, 215))],
+    "purple": [((95, 25, 50), (150, 255, 235))],
 }
 MIN_AREA = 250  # pixels at 640 px wide
 UNION = {"purple"}
+SHAPED = {"black", "white"}  # keycaps: compact, roughly square blobs
+MAX_AREA = int(os.getenv("KEYRING_MAX_AREA", "9000"))  # px at 640 wide (a keycap is ~1500-4000)
+TOP_IGNORE = float(os.getenv("ROW_TOP_IGNORE", "0.09"))
 MIRRORED = os.getenv("SIDE_CAMERA_MIRRORED", "1") == "1"
 
 
@@ -40,8 +44,18 @@ def _find(frame_bgr: np.ndarray) -> dict[str, tuple[float, int, float]]:
     h, w = frame_bgr.shape[:2]
     img = cv2.resize(frame_bgr, (640, int(h * 640 / w))) if w != 640 else frame_bgr
     hsv = cv2.cvtColor(cv2.GaussianBlur(img, (5, 5), 0), cv2.COLOR_BGR2HSV)
+    # The table fills most of the frame: drop pixels close to its median colour so a white or wood
+    # tabletop is never mistaken for a keycap.
+    med = np.median(hsv.reshape(-1, 3), axis=0)
+    table = (np.abs(hsv[..., 1].astype(np.int16) - int(med[1])) <= 12) & (np.abs(hsv[..., 2].astype(np.int16) - int(med[2])) <= 30)
+    hsv[table] = (60, 255, 255)  # pure green: outside every keyring range
     k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
     out: dict[str, tuple[float, int, float]] = {}
+    # Where the purple block is (dilated): its pale, bluish sides must never count as the white keycap.
+    pm = np.zeros(hsv.shape[:2], np.uint8)
+    for lo, hi in RANGES["purple"]:
+        pm |= cv2.inRange(hsv, np.array(lo, np.uint8), np.array(hi, np.uint8))
+    pm = cv2.dilate(cv2.morphologyEx(pm, cv2.MORPH_OPEN, k), np.ones((25, 25), np.uint8))
     for name, ranges in RANGES.items():
         m = np.zeros(hsv.shape[:2], np.uint8)
         for lo, hi in ranges:
@@ -51,7 +65,28 @@ def _find(frame_bgr: np.ndarray) -> dict[str, tuple[float, int, float]]:
         n, _, stats, cents = cv2.connectedComponentsWithStats(m)
         if n <= 1:
             continue
-        best = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
+        H = img.shape[0]
+        # Keyring-shaped blobs only: not too big, roughly square, not along the top edge (robot base,
+        # cables and the arm itself are dark too).
+        ok = [i for i in range(1, n)
+              if stats[i, cv2.CC_STAT_AREA] <= MAX_AREA
+              and 0.4 <= stats[i, cv2.CC_STAT_WIDTH] / max(1, stats[i, cv2.CC_STAT_HEIGHT]) <= 2.5
+              and cents[i][1] >= TOP_IGNORE * H
+              # solid like a keycap, not a thin cable loop
+              and stats[i, cv2.CC_STAT_AREA] >= 0.45 * stats[i, cv2.CC_STAT_WIDTH] * stats[i, cv2.CC_STAT_HEIGHT]
+              # sleeves and hands reach in from the right and bottom edges
+              and stats[i, cv2.CC_STAT_LEFT] + stats[i, cv2.CC_STAT_WIDTH] < img.shape[1] - 2
+              and stats[i, cv2.CC_STAT_TOP] + stats[i, cv2.CC_STAT_HEIGHT] < H - 2
+              and (name != "white" or not pm[int(cents[i][1]), int(cents[i][0])])
+              ] if name in SHAPED else [
+                  # the purple block: anything reaching the right or bottom edge is a sleeve or a hand (on the white
+                  # table the block itself can sit cut off at the left edge)
+                  i for i in range(1, n)
+                  if stats[i, cv2.CC_STAT_TOP] + stats[i, cv2.CC_STAT_HEIGHT] < H - 2
+                  and stats[i, cv2.CC_STAT_LEFT] + stats[i, cv2.CC_STAT_WIDTH] < img.shape[1] - 2]
+        if not ok:
+            continue
+        best = max(ok, key=lambda i: stats[i, cv2.CC_STAT_AREA])
         area = int(stats[best, cv2.CC_STAT_AREA])
         if area < MIN_AREA:
             continue
