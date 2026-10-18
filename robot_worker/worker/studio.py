@@ -452,7 +452,14 @@ class RecordIn(BaseModel):
 def record_cmd(body: RecordIn) -> tuple[list[str], bool]:
     if not re.fullmatch(r"[\w.-]+/[\w.-]+", body.repo):
         raise HTTPException(422, "repo must look like user/name")
-    resume = (DATA_HOME / body.repo / "meta/info.json").exists()
+    root = DATA_HOME / body.repo
+    info = root / "meta/info.json"
+    if root.exists() and (not info.exists() or episode_count(body.repo) == 0):
+        # Leftover from a run stopped before any episode was saved: set it aside, start fresh.
+        aside = DATA_HOME / "_set_aside" / f"{body.repo.replace('/', '__')}_{int(time.time())}"
+        aside.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(root), str(aside))
+    resume = info.exists()
     cmd = [
         "lerobot-record",
         *robot_args(True),
@@ -464,6 +471,7 @@ def record_cmd(body: RecordIn) -> tuple[list[str], bool]:
         "--dataset.fps=30",
         "--dataset.push_to_hub=false",
         "--dataset.no_stamp=true",  # LeRobot 0.6 otherwise makes a new timestamped folder per run, breaking resume
+        f"--dataset.root={root}",  # LeRobot 0.6 requires an explicit root to resume (append to) a dataset
         f"--display_data={'true' if body.rerun else 'false'}",
         *(display_args() if body.rerun else []),
         f"--play_sounds={'true' if body.sounds else 'false'}",

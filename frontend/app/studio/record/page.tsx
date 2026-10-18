@@ -36,6 +36,17 @@ function phaseOf(c: CampaignStatus | null, s: StudioStatus | null): Phase {
   }
 }
 
+/** "Swap LEFT and RIGHT: a, b, then c. Start: x left, y middle, z right, empty spot in front" */
+function parsePlan(variation?: string) {
+  if (!variation) return null;
+  const [movePart, startPart = ""] = variation.split(" Start: ");
+  const idx = movePart.indexOf(": ");
+  const title = idx > 0 ? movePart.slice(0, idx) : movePart;
+  const steps = (idx > 0 ? movePart.slice(idx + 2) : "").replace(/\.\s*$/, "").split(/, then |, /).map((x) => x.trim()).filter(Boolean);
+  const lineup = startPart.replace(/\.\s*$/, "").split(", ").map((x) => x.trim()).filter(Boolean);
+  return { title, steps, lineup };
+}
+
 export default function RecordPage() {
   const [status, setStatus] = useState<StudioStatus | null>(null);
   const [campaign, setCampaign] = useState<CampaignStatus | null>(null);
@@ -103,7 +114,28 @@ export default function RecordPage() {
         {left !== null && <div className="rec-count">{left}</div>}
       </div>
 
-      <p className="rec-msg">{campaign?.message || "Open the full Studio to set up a recording campaign."}</p>
+      {(() => {
+        const plan = parsePlan(campaign?.current?.variation);
+        if (!plan) return <p className="rec-msg">{campaign?.message || "Open the full Studio to set up a recording campaign."}</p>;
+        const resetting = phase.tone === "reset" || phase.tone === "wait";
+        return (
+          <div className="rec-steps">
+            <div className="rec-steps-title">{plan.title}</div>
+            {plan.steps.length > 0 && (
+              <ol className={resetting ? "dim" : ""}>
+                {plan.steps.map((st, i) => <li key={i}>{st}</li>)}
+              </ol>
+            )}
+            {plan.lineup.length > 0 && (
+              <div className={`rec-lineup ${resetting ? "focus" : ""}`}>
+                <span className="small">{phase.tone === "reset" ? "Reset to:" : "Start from:"}</span>
+                {plan.lineup.map((x, i) => <span key={i} className="badge">{x}</span>)}
+              </div>
+            )}
+            {(phase.tone === "stop" || phase.key === "break" || phase.key === "done") && <p className="rec-msg">{campaign?.message}</p>}
+          </div>
+        );
+      })()}
       {err && <p className="warn">{err}</p>}
 
       <div className="rec-buttons">

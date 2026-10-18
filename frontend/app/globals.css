@@ -200,3 +200,12 @@ button.huge { font-size: 1.8rem; padding: 22px 48px; min-width: 200px; }
 .st-real { background: #cfe8da; }
 .st-mock { background: #fbe6c2; }
 .st-placeholder { background: #e6e6e6; }
+
+/* Record screen: shuffle steps */
+.rec-steps { text-align: left; background: var(--surface); border: 2px solid var(--border); border-radius: 20px; padding: 16px 20px; margin: 8px 0; }
+.rec-steps-title { font-size: 1.6rem; font-weight: 800; margin-bottom: 6px; }
+.rec-steps ol { font-size: 1.35rem; margin: 6px 0 10px; padding-left: 1.4em; }
+.rec-steps ol li { margin: 6px 0; }
+.rec-steps ol.dim { opacity: 0.45; }
+.rec-lineup { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 1.05rem; }
+.rec-lineup.focus .badge { background: #b06a00; color: #fff; font-size: 1.15rem; padding: 6px 14px; }
