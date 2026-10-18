@@ -42,7 +42,8 @@ def allowlist() -> dict[tuple[str, str], dict]:
 import os as _os  # noqa: E402
 
 GRIP_OPEN = float(_os.getenv("SCRIPT_GRIP_OPEN", "38"))  # the demos open to ~36-40
-GRIP_CLOSE = float(_os.getenv("SCRIPT_GRIP_CLOSE", "12"))  # demos closed to ~8; a bit gentler to spare the gripper motor
+GRIP_CLOSE = float(_os.getenv("SCRIPT_GRIP_CLOSE", "12"))
+GRIP_RELEASE = float(_os.getenv("SCRIPT_GRIP_RELEASE", "26"))  # just past holding (~20): lets go without a flick  # demos closed to ~8; a bit gentler to spare the gripper motor
 SCRIPT_POSES = ["home"] + [f"above_s{i}" for i in range(1, SLOTS + 1)] + [f"down_s{i}" for i in range(1, SLOTS + 1)]
 
 

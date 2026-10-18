@@ -314,7 +314,7 @@ class ScriptedExecutor:
         and line up each pick with where the keyring really is."""
         from .robot import GRIPPER, load_poses
         from .row_check import find, find_xy, read_row
-        from .shuffle_math import GRIP_CLOSE, GRIP_OPEN, SHUFFLES
+        from .shuffle_math import GRIP_CLOSE, GRIP_OPEN, GRIP_RELEASE, SHUFFLES
         from .slot_locate import fit, load_calibration, load_spots, pan_correction, spot_problems
 
         data = load_poses()
@@ -394,8 +394,11 @@ class ScriptedExecutor:
             move(poses["home"])
             move(poses[f"above_s{b}"])
             move(poses[f"down_s{b}"])
-            grip(GRIP_OPEN, 0.3)
+            # Release gently: open just enough to let go, lift, then open fully. Snapping wide open
+            # at table height flicked keyrings over at slot 4.
+            grip(GRIP_RELEASE, 0.4)
             move(poses[f"above_s{b}"])
+            grip(GRIP_OPEN, 0.1)
             move(poses["home"])
             row[b - 1], row[a - 1] = obj, None
         move(poses["home"])
