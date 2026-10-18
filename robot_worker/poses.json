@@ -1,5 +1,5 @@
 {
-  "_note": "Slot poses re-taught by hand for all 4 slots (teach_slots.py).",
+  "_note": "Slot poses re-taught by hand (teach_slots.py, slots [4]).",
   "poses": {
     "home": {
       "shoulder_pan.pos": -9.01,
@@ -58,20 +58,20 @@
       "gripper.pos": 26.1
     },
     "above_s4": {
-      "shoulder_pan.pos": 14.29,
-      "shoulder_lift.pos": -10.81,
-      "elbow_flex.pos": 3.25,
-      "wrist_flex.pos": 72.75,
-      "wrist_roll.pos": 130.42,
-      "gripper.pos": 26.62
+      "shoulder_pan.pos": 39.78,
+      "shoulder_lift.pos": 7.82,
+      "elbow_flex.pos": -5.63,
+      "wrist_flex.pos": 71.87,
+      "wrist_roll.pos": 136.04,
+      "gripper.pos": 38.21
     },
     "down_s4": {
-      "shoulder_pan.pos": 24.04,
-      "shoulder_lift.pos": -5.63,
-      "elbow_flex.pos": 7.3,
-      "wrist_flex.pos": 72.13,
-      "wrist_roll.pos": 130.42,
-      "gripper.pos": 26.57
+      "shoulder_pan.pos": 40.75,
+      "shoulder_lift.pos": 31.74,
+      "elbow_flex.pos": -5.01,
+      "wrist_flex.pos": 60.35,
+      "wrist_roll.pos": 135.96,
+      "gripper.pos": 38.27
     },
     "rest": {
       "shoulder_pan.pos": 15.52,
