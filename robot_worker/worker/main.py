@@ -6,13 +6,18 @@ import os
 import threading
 from datetime import datetime, timezone
 
+from pathlib import Path
+
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+
+from . import studio  # noqa: E402
 from .executors import MockExecutor, PerceptronExecutor, RobotError, ScriptedExecutor, Stopped
 
-load_dotenv()
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("robot_worker")
 
@@ -29,6 +34,13 @@ EXECUTORS = {"mock": MockExecutor, "perceptron": PerceptronExecutor, "scripted":
 executor = EXECUTORS[MODE]()
 
 app = FastAPI(title="ReMind robot worker")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=os.getenv("CORS_ORIGINS", "http://localhost:3000").split(","),
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+app.include_router(studio.router)
 jobs: dict[str, dict] = {}
 lock = threading.Lock()
 stop_event = threading.Event()

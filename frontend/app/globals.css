@@ -62,3 +62,24 @@ button.stop { background: var(--stop); border-color: var(--stop); color: #fff; }
 .badge { display: inline-block; padding: 2px 12px; border-radius: 999px; background: #ece5da; font-size: 16px; }
 .warn { color: var(--warn); }
 select { font: inherit; padding: 10px; border-radius: 12px; border: 2px solid var(--border); background: var(--surface); color: var(--text); }
+
+/* Robot Studio */
+section { margin-top: 32px; }
+h3 { font-size: 1.05rem; margin: 8px 0; }
+.grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+.log {
+  background: #1f1b16; color: #e9e2d6; font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+  padding: 12px; border-radius: 12px; overflow: auto; white-space: pre-wrap; word-break: break-all;
+}
+input:not([type="checkbox"]) {
+  font: inherit; font-size: 16px; padding: 8px 10px; border-radius: 10px; border: 2px solid var(--border);
+  background: var(--surface); color: var(--text); width: 100%;
+}
+label.small { display: flex; flex-direction: column; gap: 4px; }
+.row label.small { width: auto; }
+.table { width: 100%; border-collapse: collapse; font-size: 16px; }
+.table th, .table td { text-align: left; padding: 8px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.table button { min-height: 36px; padding: 6px 12px; font-size: 15px; }
+.progress { height: 12px; background: #ece5da; border-radius: 999px; overflow: hidden; }
+.progress > div { height: 100%; background: var(--accent); transition: width 0.4s; }
+code { font-size: 0.85em; }

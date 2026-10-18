@@ -70,6 +70,28 @@ def cmd_ports(_):
     print("\nTo tell leader from follower: unplug one arm's USB and run `lerobot-find-port`.")
 
 
+def cmd_cameras(a):
+    """Grab one frame from each camera index so you can tell side from wrist."""
+    import cv2
+
+    out = ROOT / "camera_snapshots"
+    out.mkdir(exist_ok=True)
+    found = []
+    for i in range(a.max):
+        cap = cv2.VideoCapture(i)
+        ok, frame = cap.read() if cap.isOpened() else (False, None)
+        if ok:
+            path = out / f"camera_{i}.jpg"
+            cv2.imwrite(str(path), frame)
+            found.append(i)
+            print(f"index {i}: {frame.shape[1]}x{frame.shape[0]} -> {path}")
+        cap.release()
+    if not found:
+        sys.exit("No cameras opened. Give Terminal camera access: System Settings > Privacy & Security > Camera, then reopen Terminal.")
+    print("\nSet SIDE_CAMERA_INDEX and WRIST_CAMERA_INDEX in .env (index 0 is often the MacBook's own camera).")
+    subprocess.call(["open", str(out)])
+
+
 def cmd_calibrate(a):
     lerobot("lerobot-calibrate", *(follower_args() if a.arm == "follower" else leader_args()))
 
@@ -200,6 +222,10 @@ def main():
     sub = p.add_subparsers(dest="cmd", required=True)
 
     sub.add_parser("ports", help="list robot serial ports").set_defaults(fn=cmd_ports)
+
+    cams = sub.add_parser("cameras", help="snapshot each camera index to identify side/wrist")
+    cams.add_argument("--max", type=int, default=4)
+    cams.set_defaults(fn=cmd_cameras)
 
     c = sub.add_parser("calibrate", help="run LeRobot calibration for one arm")
     c.add_argument("arm", choices=["follower", "leader"])

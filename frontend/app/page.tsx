@@ -10,6 +10,10 @@ export default function Home() {
           <h2>Caregiver</h2>
           <p className="small">Choose a profile, approve and supervise a session.</p>
         </Link>
+        <Link href="/studio" className="card">
+          <h2>Robot Studio</h2>
+          <p className="small">Teleop, cameras, recording and Perceptron training.</p>
+        </Link>
         <Link href="/participant" className="card">
           <h2>Participant</h2>
           <p className="small">Opened from the caregiver screen once a session is approved.</p>

@@ -18,3 +18,4 @@ __pycache__/
 .venv/
 venv/
 *.tsbuildinfo
+robot_worker/camera_snapshots/
