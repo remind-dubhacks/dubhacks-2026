@@ -307,3 +307,14 @@
 .calm-slot-name { font-size: min(4vw, 3.6vh); font-weight: 600; text-align: center; }
 .calm-slot-spot { font-size: min(3vw, 2.8vh); color: var(--ink-muted); }
 .calm-table-choice { margin: 0; font-size: min(4.4vw, 3.8vh); font-weight: 600; text-align: center; }
+
+
+/* Robot status under the games tray, with the playground link. */
+.calm-setup .robot-row { display: flex; align-items: center; flex-wrap: wrap; gap: calc(10 * var(--u)) calc(14 * var(--u)); }
+.calm-setup .robot-row .test-text { margin-left: auto; text-decoration: none; display: inline-flex; align-items: center; }
+.robot-dot { width: 12px; height: 12px; border-radius: 50%; flex: none; box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25); }
+.robot-dot.on { background: #3d7457; }
+.robot-dot.off { background: #b9beb6; }
+.robot-dot.wait { background: #d8c48a; animation: robot-wait 1.4s ease-in-out infinite; }
+@keyframes robot-wait { 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) { .robot-dot.wait { animation: none; } }

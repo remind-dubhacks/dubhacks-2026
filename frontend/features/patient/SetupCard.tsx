@@ -89,12 +89,14 @@ export function SetupCard({ live, connecting, error, onStart, onEnd, onHide }: P
   const [testMsg, setTestMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [testing, setTesting] = useState(false);
   const [robotReady, setRobotReady] = useState(false);
+  const [robotChecked, setRobotChecked] = useState(false);
   const available = (id: string) => !ROBOT_GAMES.has(id) || robotReady;
   const [games, setGames] = useState<string[]>(GAMES.filter((g) => g.on && !ROBOT_GAMES.has(g.id)).map((g) => g.id));
   useEffect(() => {
     let alive = true;
     const check = () => fetch(`${API}/api/health`).then((r) => r.json())
-      .then((h) => { if (alive) setRobotReady(Boolean(h?.robot?.ready)); }).catch(() => { if (alive) setRobotReady(false); });
+      .then((h) => { if (alive) { setRobotReady(Boolean(h?.robot?.ready)); setRobotChecked(true); } })
+      .catch(() => { if (alive) { setRobotReady(false); setRobotChecked(true); } });
     check();
     const id = setInterval(check, 15000);
     return () => { alive = false; clearInterval(id); };
@@ -225,6 +227,13 @@ export function SetupCard({ live, connecting, error, onStart, onEnd, onHide }: P
           <div className="key-labels" aria-hidden="true">
             {GAMES.map((g) => <span key={g.id} className={available(g.id) ? "" : "disabled"}>{g.label}</span>)}
           </div>
+        </div>
+        <div className="robot-row">
+          <span className={`robot-dot ${robotReady ? "on" : robotChecked ? "off" : "wait"}`} aria-hidden="true" />
+          <span className="field-note">
+            {robotReady ? "Robot arm ready: tap the robot game to include it." : robotChecked ? "Robot arm offline: the robot game is unavailable." : "Checking the robot arm…"}
+          </span>
+          <a className="test-text" href="/playground" target="_blank" rel="noreferrer">Open robot playground</a>
         </div>
         {error && <p className="error">{error}</p>}
         <div className="start-well">

@@ -1,0 +1,53 @@
+/* Robot playground in the calm faceplate style of the patient setup card (features/patient/calm.css). */
+.pg {
+  --ink: #1e2b26; --ink-muted: #4a524d; --face: linear-gradient(180deg, #f1f3ee 0%, #e0e4db 100%);
+  --well: linear-gradient(180deg, #cdd2c8 0%, #f5f7f2 100%); --field: #f8f9f5;
+  --primary: linear-gradient(180deg, #4c8a68 0%, #2f6248 100%); --ok: #2f6248; --warn: #8a5a12; --stop: #b3261e;
+  min-height: 100vh; padding: 24px 16px 48px; color: var(--ink);
+  background: linear-gradient(180deg, rgb(214, 232, 240) 0%, rgb(230, 239, 216) 100%) fixed;
+  font-family: "Atkinson Hyperlegible Next", system-ui, sans-serif; -webkit-font-smoothing: antialiased;
+}
+.pg > * { max-width: 1180px; margin-left: auto; margin-right: auto; }
+.pg h1 { margin: 0 0 4px; font-size: clamp(26px, 4vw, 36px); }
+.pg h2 { margin: 0 0 12px; font-size: 22px; }
+.pg-face {
+  background: var(--face); border-radius: 28px; padding: 20px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 18px 40px rgba(30, 43, 38, 0.12), 0 2px 4px rgba(30, 43, 38, 0.12);
+}
+.pg-head { display: flex; gap: 16px; align-items: flex-start; justify-content: space-between; margin-bottom: 16px; }
+.pg-bar { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; margin-bottom: 16px; }
+.pg-stat { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; }
+.pg-stat.warm { color: var(--warn); } .pg-stat.hot { color: var(--stop); }
+.pg-dot { width: 12px; height: 12px; border-radius: 50%; box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25); background: #d8c48a; }
+.pg-dot.on { background: #3d7457; } .pg-dot.off { background: #b9beb6; }
+.pg-controls { margin-left: auto; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.pg-well { padding: 4px; border-radius: 16px; background: var(--well); }
+.pg-well :is(select, input) { font: inherit; font-size: 17px; padding: 10px 14px; border: none; border-radius: 12px; background: var(--field); color: var(--ink);
+  box-shadow: inset 0 2px 3px rgba(30, 43, 38, 0.15); min-width: 0; width: 100%; }
+.pg-start { font: inherit; font-weight: 600; font-size: 18px; color: #fff; background: var(--primary); border: none; border-radius: 16px; padding: 12px 22px; cursor: pointer;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), inset 0 -3px 0 rgba(0, 0, 0, 0.2), 0 3px 6px rgba(30, 43, 38, 0.3); }
+.pg-chip { font: inherit; font-weight: 600; font-size: 16px; color: var(--ink); background: #fff; border: none; border-radius: 14px; padding: 9px 16px;
+  cursor: pointer; text-decoration: none; display: inline-flex; align-items: center;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8), inset 0 -2px 0 rgba(0, 0, 0, 0.1), 0 2px 3px rgba(30, 43, 38, 0.3); }
+:is(.pg-start, .pg-chip):active { transform: translateY(1px); }
+.pg :focus-visible { outline: 4px solid #2f6248; outline-offset: 3px; }
+.pg-muted { color: var(--ink-muted); margin: 8px 0; } .pg-muted.small { font-size: 14px; }
+.pg-warn { color: var(--warn); font-weight: 600; margin: -6px 0 14px; } .pg-error { color: var(--stop); }
+.pg-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+.pg-status { font-size: 19px; font-weight: 600; margin: 0 0 12px; }
+.pg-row { display: grid; gap: 10px; }
+.pg-slot { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; padding: 14px 8px; border-radius: 20px;
+  background: rgba(255, 255, 255, 0.65); border: 3px solid transparent; }
+.pg-slot.right { border-color: #3d7457; } .pg-slot.off { border-color: #d8b06a; }
+.pg-slot small { color: var(--ink-muted); }
+.pg-key { width: 56px; height: 56px; border-radius: 22%; border: 2px solid rgba(30, 43, 38, 0.18); }
+.pg-say { font-size: 18px; line-height: 1.45; background: rgba(255, 255, 255, 0.65); border-radius: 18px; padding: 12px 14px; margin: 12px 0; }
+.pg-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.pg-say-form { display: flex; gap: 10px; margin-top: 12px; align-items: center; } .pg-say-form .pg-well { flex: 1; }
+.pg-cam { width: 100%; border-radius: 20px; background: #000; }
+.pg-feed ol { list-style: none; padding: 0; margin: 0; max-height: 520px; overflow: auto; }
+.pg-feed li { padding: 8px 0; border-top: 1px solid rgba(30, 43, 38, 0.12); line-height: 1.4; }
+.pg-feed li.ok { color: var(--ok); } .pg-feed li.warn { color: var(--warn); }
+.pg-feed small { color: var(--ink-muted); }
+.pg-who { font-weight: 600; text-transform: capitalize; }
+@media (max-width: 560px) { .pg-head { flex-direction: column; } .pg-controls { margin-left: 0; } }
