@@ -37,6 +37,24 @@ def allowlist() -> dict[tuple[str, str], dict]:
     return {("shuffle", s.id): {"instruction": s.instruction, "shuffle": s.id} for s in SHUFFLES.values()}
 
 
+# Scripted fallback (no Perceptron needed): each move is a pick and a place through taught poses.
+# Poses: home, above_s1..above_s4, down_s1..down_s4 (teach with: scripts/arm.py teach ...).
+import os as _os  # noqa: E402
+
+GRIP_OPEN = float(_os.getenv("SCRIPT_GRIP_OPEN", "38"))  # the demos open to ~36-40
+GRIP_CLOSE = float(_os.getenv("SCRIPT_GRIP_CLOSE", "12"))  # demos closed to ~8; a bit gentler to spare the gripper motor
+SCRIPT_POSES = ["home"] + [f"above_s{i}" for i in range(1, SLOTS + 1)] + [f"down_s{i}" for i in range(1, SLOTS + 1)]
+
+
+def scripted_steps(shuffle_id: str) -> list:
+    """The shuffle as run_sequence steps: pose names, {"gripper": v} and {"wait": s}."""
+    steps: list = ["home", {"gripper": GRIP_OPEN}]
+    for a, b in SHUFFLES[shuffle_id].moves:
+        steps += [f"above_s{a}", f"down_s{a}", {"gripper": GRIP_CLOSE}, {"wait": 0.4}, f"above_s{a}",
+                  f"above_s{b}", f"down_s{b}", {"gripper": GRIP_OPEN}, {"wait": 0.3}, f"above_s{b}"]
+    return steps + ["home"]
+
+
 class MoveError(ValueError):
     pass
 

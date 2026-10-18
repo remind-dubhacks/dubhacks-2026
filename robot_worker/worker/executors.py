@@ -139,7 +139,17 @@ class PerceptronExecutor:
         side = None
         self.hand_pauses = 0
         wait_for_clear_table(self.robot, stop, self.say)
-        grant = self.client.grant(f"remind-{uuid.uuid4().hex[:12]}", ttl_seconds=600)
+        try:
+            grant = self.client.grant(f"remind-{uuid.uuid4().hex[:12]}", ttl_seconds=600)
+        except Exception as e:  # noqa: BLE001
+            # Perceptron refused or is unreachable (e.g. 409 deployment_recovering). The arm has not
+            # moved yet, so a shuffle can safely run from taught poses instead.
+            if spec.get("shuffle") and os.getenv("SCRIPTED_FALLBACK", "1") == "1" and not ScriptedExecutor.missing_poses():
+                fb = ScriptedExecutor(robot=self.robot)
+                fb.execute(spec, stop)
+                self.last_check = {**(fb.last_check or {}), "mode": "scripted-fallback", "policyError": str(e)[:200]}
+                return
+            raise RobotError("policy_unavailable", str(e)[:300]) from e
         try:
             self.client.create_session(grant, instruction, self.contract_id)
             t0 = time.monotonic()
@@ -210,27 +220,66 @@ class PerceptronExecutor:
 
 
 class ScriptedExecutor:
-    """Replays a taught waypoint sequence from poses.json. A reliable fallback for fixed pickup
-    positions; label it as scripted (not a learned policy) in the demo."""
+    """Replays taught poses from poses.json. For shuffles it builds the pick-and-place steps from
+    shuffle_math, so it works without Perceptron. Label it as scripted (not a learned policy) in
+    the demo. Also used by PerceptronExecutor as a fallback when Perceptron refuses a session."""
 
     mode = "scripted"
+    SPEED = float(os.getenv("SCRIPT_SPEED_SCALE", "0.6"))
 
-    def __init__(self) -> None:
+    def __init__(self, robot=None) -> None:
         from .robot import SO101
 
-        self.robot = SO101(cameras=False)
+        self.robot = robot or SO101(cameras=os.getenv("SCRIPTED_CAMERAS", "1") == "1")
+        self.last_check: dict | None = None
+        self.hand_pauses = 0
 
     def ready(self) -> bool:
         return True
 
-    def execute(self, spec: dict, stop: threading.Event) -> None:
-        from .robot import run_sequence
+    @staticmethod
+    def missing_poses() -> list[str]:
+        from .robot import load_poses
+        from .shuffle_math import SCRIPT_POSES
 
+        taught = load_poses()["poses"]
+        return [p for p in SCRIPT_POSES if p not in taught]
+
+    def say(self, text: str) -> None:
+        from . import voice
+
+        voice.speak(text)
+
+    def execute(self, spec: dict, stop: threading.Event) -> None:
+        from .robot import load_poses, run_sequence, run_steps
+        from .shuffle_math import scripted_steps
+
+        self.last_check = None
+        has_camera = hasattr(self.robot, "side_frame") and getattr(getattr(self.robot, "robot", None), "cameras", None)
         try:
-            run_sequence(self.robot, spec["sequence"], stop)
+            if has_camera:
+                wait_for_clear_table(self.robot, stop, self.say)
+            if spec.get("shuffle"):
+                missing = self.missing_poses()
+                if missing:
+                    raise RobotError("poses_missing", "teach these poses first: " + ", ".join(missing))
+                run_steps(self.robot, scripted_steps(spec["shuffle"]), load_poses()["poses"], stop, self.SPEED, spec["shuffle"])
+            else:
+                run_sequence(self.robot, spec["sequence"], stop)
         except (Stopped, RobotError):
             raise
         except KeyError as e:
             raise RobotError("sequence_missing", str(e)) from e
         except Exception as e:  # noqa: BLE001
             raise RobotError("motion_error", str(e)) from e
+        side = None
+        if has_camera:
+            try:
+                _, side, _ = self.robot.observe()
+            except Exception:  # noqa: BLE001
+                side = None
+        check = shuffle_check(spec, side)
+        if check:
+            self.last_check = {**check, "mode": "scripted"}
+            if check["verdict"] == "mismatch":
+                raise RobotError("shuffle_mismatch", f"expected {check['expected']}, saw {check['observed']}")

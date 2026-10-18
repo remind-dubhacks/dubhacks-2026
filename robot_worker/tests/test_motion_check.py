@@ -465,3 +465,82 @@ def test_only_the_contract_stride_runs_before_predicting_again(limits):
     ex.client.predict = lambda *a, **k: (calls.append(1), real(*a, **k))[1]
     ex.execute({"instruction": "x", "shuffle": "swap_lr"}, executors.threading.Event())
     assert len(ex.robot.sent) == 15 * len(calls)
+
+
+# ---------------------------------------------------------------- scripted fallback (no Perceptron)
+
+from worker.shuffle_math import SCRIPT_POSES, scripted_steps  # noqa: E402
+
+
+@pytest.mark.parametrize("sid", list(SHUFFLES))
+def test_scripted_steps_play_the_same_moves_as_the_skill(sid):
+    """Replaying the scripted gripper events on the row gives the shuffle's expected end."""
+    row = [*OBJECTS, None]
+    held = slot = None
+    for step in scripted_steps(sid):
+        if isinstance(step, str) and step.startswith("down_s"):
+            slot = int(step[-1])
+        elif isinstance(step, dict) and "gripper" in step and slot:
+            if step["gripper"] < 20 and held is None:
+                held, row[slot - 1] = row[slot - 1], None
+                assert held is not None, f"{sid}: picked from empty slot {slot}"
+            elif step["gripper"] >= 20 and held is not None:
+                assert row[slot - 1] is None, f"{sid}: placed onto full slot {slot}"
+                row[slot - 1], held = held, None
+    assert row[:3] == expected_end(OBJECTS, sid) and row[3] is None and held is None
+    assert scripted_steps(sid)[0] == "home" and scripted_steps(sid)[-1] == "home"
+    assert {s for s in scripted_steps(sid) if isinstance(s, str)} <= set(SCRIPT_POSES)
+
+
+class FakeArm(FakeRobot):
+    def __init__(self, *a, **k):
+        super().__init__(*a, **k)
+        self.path = []
+
+    def move_to(self, target, stop=None, speed_scale=1.0):
+        self.path.append(("move", dict(target)))
+
+    def gripper(self, value, stop=None):
+        self.path.append(("grip", value))
+
+
+def taught(monkeypatch):
+    poses = {p: {"shoulder_pan.pos": float(i)} for i, p in enumerate(SCRIPT_POSES)}
+    monkeypatch.setattr("worker.robot.load_poses", lambda: {"poses": poses, "sequences": {}})
+    return poses
+
+
+class RefusingClient(FakeClient):
+    def grant(self, *a, **k):
+        raise RuntimeError("409 deployment_recovering")
+
+
+def test_perceptron_refusal_falls_back_to_scripted_shuffle(limits, monkeypatch):
+    taught(monkeypatch)
+    ex = make_exec(limits, [], png("ep00_end.jpg"))
+    ex.client = RefusingClient([])
+    ex.robot = FakeArm(middle(limits), png("ep00_end.jpg"))
+    ex.execute({"instruction": "x", "shuffle": "swap_lr"}, executors.threading.Event())
+    assert ex.last_check["mode"] == "scripted-fallback"
+    assert "deployment_recovering" in ex.last_check["policyError"]
+    grips = [v for k, v in ex.robot.path if k == "grip"]
+    assert grips.count(shuffle_math.GRIP_CLOSE) == 3  # three pick-and-places for a swap
+
+
+def test_no_fallback_without_taught_poses(limits, monkeypatch):
+    monkeypatch.setattr("worker.robot.load_poses", lambda: {"poses": {}, "sequences": {}})
+    ex = make_exec(limits, [], png("ep00_end.jpg"))
+    ex.client = RefusingClient([])
+    ex.robot = FakeArm(middle(limits), png("ep00_end.jpg"))
+    with pytest.raises(executors.RobotError) as e:
+        ex.execute({"instruction": "x", "shuffle": "swap_lr"}, executors.threading.Event())
+    assert e.value.code == "policy_unavailable"
+    assert ex.robot.path == []  # never moved
+
+
+def test_scripted_executor_reports_missing_poses(monkeypatch):
+    monkeypatch.setattr("worker.robot.load_poses", lambda: {"poses": {"home": {}}, "sequences": {}})
+    ex = executors.ScriptedExecutor(robot=FakeArm([0] * 6, None))
+    with pytest.raises(executors.RobotError) as e:
+        ex.execute({"instruction": "x", "shuffle": "swap_lr"}, executors.threading.Event())
+    assert e.value.code == "poses_missing" and "down_s4" in str(e.value)

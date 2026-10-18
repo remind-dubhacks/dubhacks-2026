@@ -145,13 +145,17 @@ def run_sequence(arm: SO101, name: str, stop: threading.Event | None = None, spe
     steps = data["sequences"].get(name)
     if steps is None:
         raise KeyError(f"no sequence named {name!r} in {POSES_FILE}")
+    run_steps(arm, steps, data["poses"], stop, speed_scale, name)
+
+
+def run_steps(arm: SO101, steps: list, poses: dict, stop: threading.Event | None = None, speed_scale: float = 1.0, name: str = "steps") -> None:
     for step in steps:
         if stop is not None and stop.is_set():
             raise Stopped()
         if isinstance(step, str):
-            if step not in data["poses"]:
+            if step not in poses:
                 raise KeyError(f"sequence {name!r} uses unknown pose {step!r}")
-            arm.move_to(data["poses"][step], stop, speed_scale)
+            arm.move_to(poses[step], stop, speed_scale)
         elif "gripper" in step:
             arm.gripper(float(step["gripper"]), stop)
         elif "wait" in step:
