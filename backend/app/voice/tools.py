@@ -74,6 +74,11 @@ TOOL_SCHEMAS = [
             "engagement": {"type": "string", "enum": ["engaged", "some", "withdrawn"]},
             "note": {"type": "string", "description": "One short sentence, e.g. 'Talked about seeing Elvis films with her sister.'"}},
             "required": ["engagement"]}}},
+    {"type": "function", "function": {
+        "name": "remember", "description": "Save one short, lasting fact about the person for future sessions: people in their life, places, work, favourites, stories they enjoy. Use when they share something worth keeping, and always when they ask you to remember something. Never health details.",
+        "parameters": {"type": "object", "properties": {
+            "fact": {"type": "string", "description": "One short sentence in the third person with their name, e.g. 'Rose's favourite food is hot dogs.'"}},
+            "required": ["fact"]}}},
 ]
 
 
@@ -90,6 +95,7 @@ TOOL_INFO = {
     "show_message": {"status": "real", "example": "(Greeting)", "does": "Shows one short sentence on the patient screen (12 words max)."},
     "end_game": {"status": "real", "example": "Let's stop this one.", "does": "Ends a screen game and returns the screen to rest."},
     "note_response": {"status": "real", "example": "(After each item)", "does": "Records engagement and a short note in the session record for the nurse."},
+    "remember": {"status": "real", "example": "Remember that my favourite food is hot dogs.", "does": "Saves a lasting fact to this resident's own Backboard memory, straight away."},
 }
 
 
@@ -222,5 +228,8 @@ async def run_tool(state: GameState, name: str, args: dict, table_order: list[st
     if name == "stop":
         state.phase, state.result, state.screen, state.sound = "stopped", "stopped", dict(REST), None
         return {"ok": True}
+
+    if name == "remember":  # handled by the live relay (voice/live.py), which knows whose memory it is
+        return {"ok": False, "error": "Memories are not kept in this mode."}
 
     return {"ok": False, "error": "unknown tool"}

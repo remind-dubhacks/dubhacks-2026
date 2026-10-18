@@ -179,3 +179,43 @@ async def test_digest_session_skips_without_input(backboard, monkeypatch):
     assert await memory.digest_session(None, "Rose", ["hello"]) == []
     assert await memory.digest_session("a1", "Rose", []) == []
     assert backboard == []
+
+
+async def test_digest_skips_what_remember_already_saved(backboard):
+    saved = await memory.digest_session("a1", "Rose", ["Linda comes every Sunday."],
+                                        remembered=["Rose's daughter Linda visits on Sundays."])
+    assert saved == []
+    assert not [c for c in backboard if c[0] == "POST" and c[1] == "/api/assistants/a1/memories"]
+
+
+async def test_writes_use_the_write_timeout(monkeypatch):
+    timeouts = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        timeouts.append((req.method, req.url.path, req.extensions["timeout"]["read"]))
+        return httpx.Response(200, json={"memories": []})
+    monkeypatch.setattr(settings, "backboard_api_key", "k")
+    monkeypatch.setattr(settings, "backboard_timeout_s", 3.0)
+    monkeypatch.setattr(settings, "backboard_write_timeout_s", 30.0)
+    monkeypatch.setattr(memory, "_transport", httpx.MockTransport(handler))
+    await memory.add("a1", "Likes tea.")
+    await memory.recall("a1")
+    assert timeouts[0][2] == 30.0 and timeouts[1][2] == 3.0  # saving waits for Backboard; session start does not
+
+
+async def test_unreachable_lookup_never_creates_a_second_assistant(monkeypatch):
+    """A timeout while looking the assistant up by name must not read as "none exists": creating one then would
+    split the person's memories across two assistants."""
+    from app.db import MemoryStore
+    calls = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        calls.append((req.method, req.url.path))
+        raise httpx.ReadTimeout("slow", request=req)
+    monkeypatch.setattr(settings, "backboard_api_key", "k")
+    monkeypatch.setattr(memory, "_transport", httpx.MockTransport(handler))
+    store = MemoryStore()
+    p = {"_id": "p1", "careProfile": ROSE}
+    await store.insert("participants", dict(p))
+    assert await memory.ensure_assistant(store, p) is None
+    assert calls == [("GET", "/api/assistants")]  # looked up, gave up; no POST

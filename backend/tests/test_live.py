@@ -4,6 +4,7 @@ import base64
 import json
 import threading
 
+import httpx
 import websockets
 from fastapi.testclient import TestClient
 
@@ -74,8 +75,10 @@ def refusing_backboard(port_holder: list, received: list):
     run_server(port_holder, handler)
 
 
-def fake_backboard(port_holder: list, received: list, end_first: bool = False):
-    """Speaks the documented Backboard Realtime protocol. Records frames; binary audio as {"binary": n}."""
+def fake_backboard(port_holder: list, received: list, end_first: bool = False,
+                   tool: tuple[str, dict] = ("start_game", {"game_id": "reorder"})):
+    """Speaks the documented Backboard Realtime protocol. Records frames; binary audio as {"binary": n}. After the
+    greeting the model hears the person and calls `tool`."""
     connections = []
 
     async def handler(ws):
@@ -88,12 +91,15 @@ def fake_backboard(port_holder: list, received: list, end_first: bool = False):
         connections.append(ws)
         n = len(connections)
         send = lambda o: ws.send(json.dumps(o))  # noqa: E731
+        texts = 0  # text inputs on this connection; the first is the greeting
         async for raw in ws:
             if isinstance(raw, bytes):
                 received.append({"binary": len(raw)})
                 continue
             ev = json.loads(raw)
             received.append(ev)
+            is_text = ev.get("type") == "provider.event" and "text" in ev["event"].get("realtimeInput", {})
+            texts += is_text
             if "provider" in ev:  # setup frame
                 ev["_api_key"] = ws.request.headers.get("X-API-Key")
                 await send({"type": "session.begin", "session_id": f"s{n}", "thread_id": "t1", "assistant_id": ev.get("assistant_id")})
@@ -101,11 +107,10 @@ def fake_backboard(port_holder: list, received: list, end_first: bool = False):
                     await send({"type": "session.ended"})
                 elif end_first:
                     await send({"type": "transcript.delta", "role": "assistant", "text": "Where were we?", "item_id": "r1"})
-            elif ev.get("type") == "provider.event" and "text" in ev["event"].get("realtimeInput", {}) and sum(
-                    "text" in e.get("event", {}).get("realtimeInput", {}) for e in received) == 1:
+            elif is_text and texts == 1:
                 await send({"type": "transcript.delta", "role": "user", "text": "play the ordering game", "item_id": "u1"})
                 await send({"type": "transcript.final", "role": "user", "text": "play the ordering game", "item_id": "u1"})
-                await send({"type": "tool.call", "name": "start_game", "arguments": json.dumps({"game_id": "reorder"}),
+                await send({"type": "tool.call", "name": tool[0], "arguments": json.dumps(tool[1]),
                             "tool_call_id": "c1", "hosted": False})
             elif ev.get("type") == "tool.outputs":
                 await send({"type": "transcript.delta", "role": "assistant", "text": "Put the cup first.", "item_id": "a1"})
@@ -222,7 +227,7 @@ def test_gemini_fallback_reads_memories_into_prompt(monkeypatch):
 
     async def fake_add(*a, **kw):
         added.append(a)
-    async def fake_digest(aid, patient, said):
+    async def fake_digest(aid, patient, said, remembered=None):
         digested.append((aid, patient, list(said)))
     monkeypatch.setattr(memory, "recall", fake_recall)
     monkeypatch.setattr(memory, "add", fake_add)
@@ -251,6 +256,42 @@ def use_backboard(monkeypatch, port: int) -> None:
     monkeypatch.setattr(settings, "backboard_realtime_url", f"ws://127.0.0.1:{port}")
 
 
+def fake_backboard_rest(monkeypatch, assistants: dict[str, str] | None = None,
+                        memories: dict[str, list[str]] | None = None) -> list:
+    """Fake Backboard REST API: assistants {id: name}, memories {id: [content]}. Returns the requests made, as
+    (method, path, json body). New assistants get ids new1, new2, ..."""
+    assistants = {} if assistants is None else assistants
+    memories = {} if memories is None else memories
+    calls = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        body = json.loads(req.content) if req.content else None
+        path = req.url.path.removeprefix("/api")
+        calls.append((req.method, path, body))
+        parts = path.strip("/").split("/")
+        if parts == ["assistants"] and req.method == "GET":
+            name = req.url.params.get("name")
+            return httpx.Response(200, json=[{"assistant_id": a, "name": n} for a, n in assistants.items() if n == name])
+        if parts == ["assistants"]:
+            aid = f"new{len(assistants) + 1}"
+            assistants[aid] = body["name"]
+            return httpx.Response(200, json={"assistant_id": aid, "name": body["name"]})
+        if len(parts) == 2 and parts[0] == "assistants":
+            aid = parts[1]
+            return httpx.Response(200, json={"assistant_id": aid, "name": assistants[aid]}) if aid in assistants else httpx.Response(404)
+        if len(parts) == 3 and parts[2] == "memories":
+            aid = parts[1]
+            if req.method == "POST":
+                memories.setdefault(aid, []).append(body["content"])
+                return httpx.Response(200, json={"success": True, "memory_id": f"m{len(memories[aid])}"})
+            return httpx.Response(200, json={"memories": [{"id": f"m{i}", "content": c} for i, c in enumerate(memories.get(aid, []))],
+                                             "total_count": len(memories.get(aid, []))})
+        return httpx.Response(404)
+
+    monkeypatch.setattr(memory, "_transport", httpx.MockTransport(handler))
+    return calls
+
+
 def test_backboard_relay(monkeypatch):
     """Through Backboard: setup frame carries the patient's assistant + memory=Readonly + native Gemini config; tools,
     transcripts, audio and the silent reminder all round-trip; the session is stopped cleanly at the end and what
@@ -259,8 +300,9 @@ def test_backboard_relay(monkeypatch):
     port = serve(fake_backboard, received)
     use_backboard(monkeypatch, port)
     monkeypatch.setattr(settings, "gemini_live_remind_every", 1)
+    fake_backboard_rest(monkeypatch, {"a1": "ReMind memory: demo-rose"}, {"a1": ["Rose's favourite food is hot dogs."]})
 
-    async def fake_digest(aid, patient, said):
+    async def fake_digest(aid, patient, said, remembered=None):
         digested.append((aid, patient, list(said)))
     monkeypatch.setattr(memory, "digest_session", fake_digest)
 
@@ -280,6 +322,7 @@ def test_backboard_relay(monkeypatch):
     assert setup["assistant_id"] == "a1" and setup["memory"] == "Readonly"
     assert digested == [("a1", "Rose", ["play the ordering game"])]
     assert "ABOUT ROSE" in setup["system_prompt"] and "Cary Grant" in setup["system_prompt"]
+    assert "Rose's favourite food is hot dogs." in setup["system_prompt"]  # what is remembered goes in the prompt
     opts = setup["provider_options"]
     assert "systemInstruction" not in opts and opts["realtimeInputConfig"]["automaticActivityDetection"]["silenceDurationMs"] == 2200
     assert opts["generationConfig"]["responseModalities"] == ["AUDIO"]
@@ -363,3 +406,98 @@ async def test_backboard_resumes_thread_after_session_cap(monkeypatch):
     assert len(setups) == 2 and setups[1]["thread_id"] == "t1" and "assistant_id" not in setups[1]
     assert (ev.kind, ev.text) == ("ai_text", "Where were we?")
     await up.close()
+
+
+def run_call(c, query: str) -> None:
+    with c.websocket_connect(f"/api/voice/live?{query}") as ws:
+        collect(ws, until="tool")
+        finish(c, ws)
+
+
+def test_remember_saves_to_this_residents_assistant_during_the_call(monkeypatch):
+    """The remember tool saves at once (no waiting for hang-up) to the resident's own assistant, answers ok, and the
+    after-call digest is told so it does not save the fact twice."""
+    received, digested = [], []
+    use_backboard(monkeypatch, serve(fake_backboard, received, False, ("remember", {"fact": "Rose's favourite food is hot dogs."})))
+    store_mem: dict[str, list[str]] = {}
+    fake_backboard_rest(monkeypatch, {"a1": "ReMind memory: demo-rose"}, store_mem)
+
+    async def fake_digest(aid, patient, said, remembered=None):
+        digested.append((aid, list(remembered or [])))
+    monkeypatch.setattr(memory, "digest_session", fake_digest)
+
+    with TestClient(main.app) as c:
+        asyncio.run(main.app.state.store.update("participants", "demo-rose", {"backboardAssistantId": "a1"}))
+        with c.websocket_connect("/api/voice/live?participantId=demo-rose&games=faces") as ws:
+            got = collect(ws, until="tool")
+            wait_for(lambda: store_mem.get("a1"))
+            finish(c, ws)
+            wait_for(lambda: digested)
+    assert next(m for m in got if m["type"] == "tool")["result"] == {"ok": True}
+    outputs = next(e["outputs"] for e in received if e.get("type") == "tool.outputs")
+    assert json.loads(outputs[0]["output"]) == {"ok": True}
+    assert store_mem == {"a1": ["Rose's favourite food is hot dogs."]}
+    assert digested == [("a1", ["Rose's favourite food is hot dogs."])]
+
+
+def test_remember_without_consent_or_resident_saves_nothing(monkeypatch):
+    received = []
+    use_backboard(monkeypatch, serve(fake_backboard, received, False, ("remember", {"fact": "Likes tea."})))
+    calls = fake_backboard_rest(monkeypatch, {"a1": "ReMind memory: demo-rose"})
+    with TestClient(main.app) as c:
+        asyncio.run(main.app.state.store.update("participants", "demo-rose", {
+            "backboardAssistantId": "a1", "consentFlags": {"sessionConsent": True, "rememberPreferences": False}}))
+        with c.websocket_connect("/api/voice/live?participantId=demo-rose&games=faces") as ws:
+            got = collect(ws, until="tool")
+            finish(c, ws)
+    assert next(m for m in got if m["type"] == "tool")["result"]["ok"] is False
+    assert received[0]["memory"] == "off" and "assistant_id" not in received[0]
+    assert not [c for c in calls if c[0] == "POST"]
+
+
+def test_each_resident_only_reads_and_writes_their_own_memory(monkeypatch):
+    """Rose and Ann call back to back: each gets their own assistant (by participant id, not first name), the
+    remember tool writes only to theirs, and Rose's prompt never holds Ann's facts."""
+    received = []
+    use_backboard(monkeypatch, serve(fake_backboard, received, False, ("remember", {"fact": "Likes gardening."})))
+    assistants: dict[str, str] = {}
+    mems: dict[str, list[str]] = {}
+    fake_backboard_rest(monkeypatch, assistants, mems)
+    monkeypatch.setattr(memory, "seed", lambda aid, profile: asyncio.sleep(0))  # keep the stores to remembered facts
+
+    with TestClient(main.app) as c:
+        ann = {"_id": "ann-1", "alias": "Rose", "consentFlags": {"sessionConsent": True, "rememberPreferences": True},
+               "careProfile": {"preferredName": "Ann"}}  # same alias as the demo resident on purpose
+        asyncio.run(main.app.state.store.insert("participants", ann))
+        run_call(c, "participantId=demo-rose&games=faces")
+        wait_for(lambda: sum(map(len, mems.values())) == 1)
+        run_call(c, "participantId=ann-1&games=faces")
+        wait_for(lambda: sum(map(len, mems.values())) == 2)
+        mems[next(a for a, n in assistants.items() if n.endswith("ann-1"))].append("Ann's son is called Tom.")
+        run_call(c, "participantId=demo-rose&games=faces")
+
+    rose_aid = next(a for a, n in assistants.items() if n == "ReMind memory: demo-rose")
+    ann_aid = next(a for a, n in assistants.items() if n == "ReMind memory: ann-1")
+    assert rose_aid != ann_aid and len(assistants) == 2  # third call re-used Rose's, no new assistant
+    setups = [e for e in received if "provider" in e]
+    assert [s["assistant_id"] for s in setups] == [rose_aid, ann_aid, rose_aid]
+    assert "Tom" not in setups[2]["system_prompt"]
+    assert mems[rose_aid] == ["Likes gardening."]  # third call: already remembered, not saved again
+    assert mems[ann_aid] == ["Likes gardening.", "Ann's son is called Tom."]
+
+
+def test_stale_stored_assistant_is_replaced_and_unreachable_backboard_turns_memory_off(monkeypatch):
+    received = []
+    use_backboard(monkeypatch, serve(fake_backboard, received))
+    fake_backboard_rest(monkeypatch, {"old": "ReMind memory: Rose", "good": "ReMind memory: demo-rose"})
+    with TestClient(main.app) as c:
+        asyncio.run(main.app.state.store.update("participants", "demo-rose", {"backboardAssistantId": "old"}))
+        run_call(c, "participantId=demo-rose&games=faces")
+        assert asyncio.run(main.app.state.store.get("participants", "demo-rose"))["backboardAssistantId"] == "good"
+
+        memory._verified.clear()
+        monkeypatch.setattr(memory, "_transport", httpx.MockTransport(lambda r: httpx.Response(503)))
+        run_call(c, "participantId=demo-rose&games=faces")
+    setups = [e for e in received if "provider" in e]
+    assert setups[0]["assistant_id"] == "good"  # old naming scheme: dropped, not trusted
+    assert setups[1]["memory"] == "off" and "assistant_id" not in setups[1]  # could not verify: no memory, never a guess

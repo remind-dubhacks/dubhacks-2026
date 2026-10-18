@@ -45,6 +45,8 @@ class Settings:
     # google/<a model listed by Backboard's GET /models>. Empty = the assistant's default model.
     backboard_digest_model: str = os.getenv("BACKBOARD_DIGEST_MODEL", "")
     backboard_timeout_s: float = float(os.getenv("BACKBOARD_TIMEOUT_S", "3.0"))  # session start waits at most this long
+    # Background writes (saving a memory, seeding, the after-call digest): Backboard embeds each memory as it saves it.
+    backboard_write_timeout_s: float = float(os.getenv("BACKBOARD_WRITE_TIMEOUT_S", "30.0"))
     voice_transport: str = os.getenv("VOICE_TRANSPORT", "")  # backboard | gemini; empty = backboard when its key is set
 
 

@@ -214,21 +214,22 @@ async def update_care_profile(pid: str, body: CareProfile, request: Request):
         raise HTTPException(404, "participant not found")
     old = memory.profile_memories(p.get("careProfile") or {})
     p = await s.update("participants", pid, {"careProfile": body.model_dump()})
-    if p.get("consentFlags", {}).get("rememberPreferences") and p.get("backboardAssistantId"):
+    if p.get("consentFlags", {}).get("rememberPreferences") and (aid := await memory.ensure_assistant(s, p)):
         for line in memory.profile_memories(p["careProfile"]):
             if line not in old:
-                await memory.add(p["backboardAssistantId"], line, kind="care_profile")
+                await memory.add(aid, line, kind="care_profile")
     return p
 
 
 @app.get("/api/participants/{pid}/memories")
 async def participant_memories(pid: str, request: Request):
     """What the companion remembers about this person (Backboard), for the nurse."""
-    p = await store(request).get("participants", pid)
+    s = store(request)
+    p = await s.get("participants", pid)
     if not p:
         raise HTTPException(404, "participant not found")
-    aid = p.get("backboardAssistantId")
-    return {"enabled": memory.enabled(), "memories": await memory.list_all(aid) if aid else []}
+    aid = await memory.ensure_assistant(s, p) if p.get("consentFlags", {}).get("rememberPreferences") else None
+    return {"enabled": memory.enabled(), "assistantId": aid, "memories": await memory.list_all(aid) if aid else []}
 
 
 @app.delete("/api/participants/{pid}")

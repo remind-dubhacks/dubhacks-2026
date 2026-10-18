@@ -40,6 +40,8 @@ def context_message(text: str) -> dict:
 
 class GeminiUpstream:
     label = "Gemini Live"
+    assistant_id: str | None = None  # the patient's Backboard assistant for this call (set by live.open_upstream)
+    memories: list[str] = []  # what that assistant remembered at the start of the call
 
     def __init__(self, setup: dict):
         self.setup = setup  # live.build_setup()
@@ -102,6 +104,8 @@ class BackboardUpstream:
     `provider.event`, so greetings, nudges and the silent reminder behave exactly as with GeminiUpstream.
     Sessions are capped at 30 minutes; on `session.ended` we reconnect to the same thread, which resumes history."""
     label = "Backboard Realtime"
+    assistant_id: str | None = None  # the patient's Backboard assistant for this call (set by live.open_upstream)
+    memories: list[str] = []  # what that assistant remembered at the start of the call
     MAX_RECONNECTS = 2
     STOP_WAIT_S = 3.0  # on close, give Backboard a moment to finish saving memories
 
