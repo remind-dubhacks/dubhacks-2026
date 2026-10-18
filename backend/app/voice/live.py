@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 import websockets
 from fastapi import WebSocket
 
+from ..alerts import normalize_phone
 from ..config import settings
 from .agent import GEMINI_DECLS, STOP_RE
 from .tools import GAMES, GameState, run_tool
@@ -40,7 +41,7 @@ Games available today: {games}.
 - Reorder (reorder): call start_game, then tell them the RIGHT order to put the objects in (target_order from the tool result; never call it the starting order) and ask them to say "done" when finished. When they are done, call check_arrangement. If wrong, kindly explain with the tool's reason and invite another try. If attempts_left is 0, gently reveal the correct order. If correct, praise them. Never claim the robot did something unless a tool result says so.
 After each item, call note_response with how engaged they were and one short note about what they shared.
 Use show_message for a short greeting or a warm sentence worth seeing. When a game ends, call end_game.
-If they ask for help, seem upset, frightened or unwell, call alert_caregiver and reassure them. If they want to stop, call stop.
+If they ask for help, or say anything concerning (pain, a fall, feeling unwell, fear, distress, being lost or confused, wanting to leave, hurting themselves), call alert_caregiver with a short plain summary of what they said, and reassure them. Never tell them the message contains anything alarming. If they want to stop, call stop.
 Be patient: people may speak slowly and pause. Do not rush them."""
 
 GREETING = ("({name} has just sat down. Call show_message with a short greeting that uses their name, then greet them warmly out loud "
@@ -82,7 +83,8 @@ async def run(ws: WebSocket) -> None:
 
     name = (ws.query_params.get("name") or "").strip()[:40] or "friend"
     games = [g for g in (ws.query_params.get("games") or "").split(",") if g in GAMES] or list(GAMES)
-    state = GameState(patient_name=name, enabled_games=games)
+    phone = normalize_phone(ws.query_params.get("phone") or "")
+    state = GameState(patient_name=name, enabled_games=games, caregiver_phone=phone, session_id=uuid.uuid4().hex)
     started_at = datetime.now(timezone.utc)
     user_buf = ai_buf = ""
     stopped = False

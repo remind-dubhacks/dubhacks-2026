@@ -3,6 +3,7 @@
 // Nurse-facing setup, shown before a session and again on Esc. The Start click is also the browser
 // gesture that allows the microphone and sound playback.
 import { useEffect, useState } from "react";
+import { sendTestText } from "../../lib/voice";
 
 const GAMES = [
   { id: "faces", label: "Famous faces", on: true },
@@ -16,27 +17,39 @@ type Props = {
   live: boolean;
   connecting: boolean;
   error: string | null;
-  onStart: (name: string, games: string[]) => void;
+  onStart: (name: string, games: string[], phone: string) => void;
   onEnd: () => void;
   onHide: () => void;
 };
 
 export function SetupCard({ live, connecting, error, onStart, onEnd, onHide }: Props) {
   const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [testMsg, setTestMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [testing, setTesting] = useState(false);
   const [games, setGames] = useState<string[]>(GAMES.filter((g) => g.on).map((g) => g.id));
 
   useEffect(() => {
     try {
       const s = JSON.parse(localStorage.getItem(SAVED) ?? "null");
       if (s?.name) setName(s.name);
+      if (s?.phone) setPhone(s.phone);
       if (Array.isArray(s?.games)) setGames(s.games);
     } catch { /* ignore */ }
   }, []);
 
   function start(e: React.FormEvent) {
     e.preventDefault();
-    try { localStorage.setItem(SAVED, JSON.stringify({ name, games })); } catch { /* ignore */ }
-    onStart(name.trim(), games);
+    try { localStorage.setItem(SAVED, JSON.stringify({ name, games, phone })); } catch { /* ignore */ }
+    onStart(name.trim(), games, phone.trim());
+  }
+
+  async function testText() {
+    setTesting(true);
+    setTestMsg(null);
+    const err = await sendTestText(phone.trim());
+    setTestMsg(err ? { ok: false, text: err } : { ok: true, text: "Test text sent." });
+    setTesting(false);
   }
 
   const toggle = (id: string) => setGames((gs) => (gs.includes(id) ? gs.filter((g) => g !== id) : [...gs, id]));
@@ -59,6 +72,16 @@ export function SetupCard({ live, connecting, error, onStart, onEnd, onHide }: P
               Patient&apos;s first name
               <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Margaret" required autoFocus />
             </label>
+            <label className="small">
+              Caregiver&apos;s phone (optional, gets a text if something concerning is said; US numbers need no +1)
+              <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(206) 555-1234" />
+            </label>
+            {phone.trim() && (
+              <div className="actions">
+                <button type="button" style={{ whiteSpace: "nowrap" }} onClick={testText} disabled={testing}>{testing ? "Sending…" : "Send test text"}</button>
+                {testMsg && <span className={testMsg.ok ? "small" : "error"}>{testMsg.text}</span>}
+              </div>
+            )}
             <fieldset>
               <legend>Games</legend>
               {GAMES.map((g) => (
