@@ -117,6 +117,7 @@ class PerceptronExecutor:
         self.stride = int((spec.get("rtc") or {}).get("execution_stride") or 0) or None
         self.fps = float(os.getenv("CONTROL_FPS", "30"))
         self.max_seconds = float(os.getenv("MAX_EPISODE_SECONDS", "25"))
+        self.blank_wrist = os.getenv("BLANK_WRIST_CAMERA", "0") == "1"
         self.robot = SO101()
         self.guard = ActionGuard()
         self.last_check: dict | None = None
@@ -158,6 +159,8 @@ class PerceptronExecutor:
                 if stop.is_set():
                     raise Stopped()
                 state, side, wrist = self.robot.observe()
+                if getattr(self, "blank_wrist", False):
+                    wrist = _black_png_like(wrist)  # match a model trained while the wrist camera was black
                 monitor.update(state)
                 if monitor.stalled:
                     raise RobotError("arm_stalled", "holding an object without moving")
@@ -217,6 +220,17 @@ class PerceptronExecutor:
                 self.client.delete_session(grant)
             except Exception:  # noqa: BLE001
                 pass
+
+
+def _black_png_like(png: bytes, _cache: dict = {}) -> bytes:  # noqa: B006
+    """An all-black PNG the size of `png` (for a model trained while the wrist camera was black)."""
+    if "png" not in _cache:
+        import cv2
+        import numpy as np
+
+        img = cv2.imdecode(np.frombuffer(png, np.uint8), cv2.IMREAD_COLOR)
+        _cache["png"] = cv2.imencode(".png", np.zeros_like(img))[1].tobytes()
+    return _cache["png"]
 
 
 class ScriptedExecutor:
