@@ -15,12 +15,13 @@ import threading
 import time
 from collections import deque
 from pathlib import Path
+from typing import Literal
 
 import httpx
 from dotenv import set_key
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 ROOT = Path(__file__).resolve().parent.parent
 ENV_FILE = ROOT / ".env"
@@ -422,13 +423,29 @@ def pc() -> httpx.Client:
     key = env("PERCEPTRON_API_KEY")
     if not key:
         raise HTTPException(400, "set PERCEPTRON_API_KEY in robot_worker/.env")
-    return httpx.Client(base_url=PERCEPTRON, headers={"Authorization": f"Bearer {key}"}, timeout=60)
+    # Long-running operations may answer 303 with a same-origin polling URL; follow it.
+    return httpx.Client(base_url=PERCEPTRON, headers={"Authorization": f"Bearer {key}"}, timeout=60, follow_redirects=True)
 
 
 def pjson(r: httpx.Response):
     if r.status_code >= 400:
-        raise HTTPException(r.status_code, f"Perceptron: {r.text[:500]}")
-    return r.json()
+        try:  # API errors look like {"error": {"code", "message", "fields"}}
+            err = r.json()["error"]
+            detail = f"{err.get('code')}: {err.get('message') or ''} {err.get('fields') or ''}".strip()
+        except Exception:  # noqa: BLE001
+            detail = r.text[:500]
+        raise HTTPException(r.status_code, f"Perceptron {detail}")
+    return r.json() if r.content else {}
+
+
+def _grant_list(resp) -> list[dict]:
+    """The upload-URL response body isn't specified in the OpenAPI schema; accept likely shapes."""
+    if isinstance(resp, list):
+        return resp
+    for key in ("files", "uploads", "items", "data"):
+        if isinstance(resp.get(key), list):
+            return resp[key]
+    raise RuntimeError(f"unexpected upload response: {str(resp)[:200]}")
 
 
 uploads: dict[str, dict] = {}  # repo -> progress
@@ -438,23 +455,30 @@ def _upload(repo: str) -> None:
     state = uploads[repo]
     root = DATA_HOME / repo
     try:
-        files = sorted(f for f in root.rglob("*") if f.is_file() and not f.name.startswith("."))
+        # The API rejects zero-byte files (size_bytes >= 1).
+        files = sorted(f for f in root.rglob("*") if f.is_file() and not f.name.startswith(".") and f.stat().st_size > 0)
         state.update(total=len(files), done=0, phase="registering")
+        slug = repo.replace("/", "-")[:80]
         with pc() as c:
-            ds = pjson(c.post("/v1/datasets", headers={"Idempotency-Key": f"upload-{repo.replace('/', '-')}-{int(time.time())}"},
-                              json={"name": repo.replace("/", "-"), "source_kind": "upload"}))
-            state["datasetId"] = ds_id = ds["id"]
+            # Stable key per dataset snapshot: a retry reuses the registration instead of duplicating it.
+            key = f"upload-{slug}-{episode_count(repo)}ep"
+            ds = pjson(c.post("/v1/datasets", headers={"Idempotency-Key": key}, json={"name": slug, "source_kind": "upload"}))
+            state["datasetId"] = ds_id = ds.get("id") or ds.get("dataset_id")
+            if not ds_id:
+                raise RuntimeError(f"no dataset id in response: {str(ds)[:200]}")
             entries = []
             for f in files:
                 data = f.read_bytes()
-                entries.append({"path": str(f.relative_to(root)), "size_bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()})
+                entries.append({"path": f.relative_to(root).as_posix(), "size_bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()})
             state["phase"] = "uploading"
             for i in range(0, len(entries), 500):
                 batch = entries[i : i + 500]
                 grants = pjson(c.post(f"/v1/datasets/{ds_id}/uploads", json={"files": batch}))
-                for g in grants.get("files", grants if isinstance(grants, list) else []):
+                for g in _grant_list(grants):
                     path = root / g["path"]
-                    r = httpx.request(g.get("method", "PUT"), g["url"], headers=g.get("headers", {}), content=path.read_bytes(), timeout=300)
+                    url = g.get("url") or g.get("upload_url") or g.get("signed_url")
+                    # Signed URL + its exact headers only; never the team key.
+                    r = httpx.request(g.get("method", "PUT"), url, headers=g.get("headers", {}), content=path.read_bytes(), timeout=300)
                     if r.status_code >= 400:
                         raise RuntimeError(f"upload {g['path']} failed: {r.status_code} {r.text[:200]}")
                     state["done"] += 1
@@ -515,19 +539,19 @@ def capabilities():
         return pjson(c.get("/v1/capabilities"))
 
 
-class TrainIn(BaseModel):
-    datasetId: str
-    steps: int = 1000
-    backend: str = "standard"
-    mode: str = "expert_only"
-    actionHorizon: int = 30
+class TrainIn(BaseModel):  # limits from the participant OpenAPI JobRequest schema
+    datasetId: str = Field(pattern=r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,95}$")
+    steps: int = Field(1000, ge=1, le=10000)
+    backend: Literal["standard", "shared"] = "standard"
+    mode: Literal["expert_only", "backbone_lora", "full"] = "expert_only"
+    actionHorizon: Literal[20, 30] = 30
     rtc: bool = True
 
 
 @router.post("/perceptron/train")
 def train(body: TrainIn) -> dict:
     with pc() as c:
-        return pjson(c.post("/v1/jobs", headers={"Idempotency-Key": f"train-{body.datasetId}-{body.steps}-{int(time.time()) // 60}"},
+        return pjson(c.post("/v1/jobs", headers={"Idempotency-Key": f"train-{body.datasetId}-{body.mode}-{body.actionHorizon}-{body.steps}"},
                             json={"dataset_id": body.datasetId, "backend": body.backend, "mode": body.mode,
                                   "action_horizon": body.actionHorizon, "rtc_enabled": body.rtc, "steps": body.steps}))
 

@@ -40,7 +40,7 @@ class Config(BaseModel):
     visionCheck: bool = True
     autoUpload: bool = True
     autoTrain: bool = True
-    trainSteps: int = Field(1000, ge=100)
+    trainSteps: int = Field(1000, ge=100, le=10000)  # API max is 10,000
     targets: list[Target]
 
 

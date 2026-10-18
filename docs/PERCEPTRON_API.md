@@ -54,6 +54,15 @@ Check `GET /v1/capabilities` first for the supported backends, modes and limits.
 
 Send an `Idempotency-Key`. Follow progress with `GET /v1/jobs/{id}`, `/logs` and `/metrics` (cursor-paged), and cancel with `POST /v1/jobs/{id}/cancel`.
 
+### Limits from the OpenAPI schema (`/openapi.json`)
+
+- `JobRequest`: `steps` 1–10,000; `action_horizon` 20 or 30; `mode` `expert_only` | `backbone_lora` | `full`; `backend` `standard` | `shared`; no extra fields.
+- `DatasetRequest`: `name` 1–100 chars; only `name`, `source_kind`, `repo_id`, `revision`.
+- `UploadFile`: `size_bytes` ≥ 1 (skip empty files), lowercase hex `sha256`, `path` ≤ 512 chars; 1–500 files per request.
+- `SessionGrantRequest`: `ttl_seconds` ≤ 21,600; IDs match `^[a-zA-Z0-9][a-zA-Z0-9_-]{0,95}$`.
+- Errors: `{"error": {"code", "message", "fields"}}`. Long-running calls may return `303` to a polling URL; follow it as-is.
+- Response bodies aren't specified in the schema, and inference endpoints aren't in it at all; confirm field names with the contract and mentors.
+
 ## 4. Checkpoint & deployment
 
 - `GET /v1/checkpoints/{id}`

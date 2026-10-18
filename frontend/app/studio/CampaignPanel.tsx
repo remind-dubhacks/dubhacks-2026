@@ -136,7 +136,7 @@ export default function CampaignPanel({ status, hfUser, onError }: { status: Cam
             <label className="small">Seconds per episode<input type="number" min={5} value={plan.episodeSeconds} onChange={(e) => upd({ episodeSeconds: +e.target.value })} /></label>
             <label className="small">Reset seconds<input type="number" min={0} value={plan.resetSeconds} onChange={(e) => upd({ resetSeconds: +e.target.value })} /></label>
             <label className="small">Break between batches (s)<input type="number" min={0} value={plan.breakSeconds} onChange={(e) => upd({ breakSeconds: +e.target.value })} /></label>
-            <label className="small">Training steps<input type="number" min={100} value={plan.trainSteps} onChange={(e) => upd({ trainSteps: +e.target.value })} /></label>
+            <label className="small">Training steps<input type="number" min={100} max={10000} value={plan.trainSteps} onChange={(e) => upd({ trainSteps: Math.min(10000, +e.target.value) })} /></label>
           </div>
           <div className="row small" style={{ marginTop: 8 }}>
             <label style={{ flexDirection: "row" }}><input type="checkbox" checked={plan.visionCheck} onChange={(e) => upd({ visionCheck: e.target.checked })} /> Camera check before each batch (teach the objects first)</label>
