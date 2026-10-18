@@ -581,7 +581,7 @@ def test_pick_correction_follows_the_keyring_and_is_capped():
     small = slot_locate.pan_correction(0.40, 2, cal, slope)  # keyring a bit toward slot 3
     assert 0 < small < slot_locate.MAX_CORRECTION_DEG
     assert slot_locate.pan_correction(0.20, 2, cal, slope) == slot_locate.MAX_CORRECTION_DEG  # far off: capped
-    assert slot_locate.pan_correction(0.05, 3, cal, slope) == 0.0  # cut off by the image edge: trust the pose
+    assert slot_locate.pan_correction(0.03, 3, cal, slope) == 0.0  # cut off by the image edge: trust the pose
     assert slot_locate.pan_correction(0.5, 4, cal, slope) == 0.0  # slot 4 is out of view
 
 
@@ -667,7 +667,7 @@ def test_spot_check_names_the_keyring_and_the_direction():
     ref = {1: (0.757, 0.30), 2: (0.438, 0.30), 3: (0.104, 0.40)}
     ok = slot_locate.spot_problems({"black": (0.75, 0.31), "white": (0.44, 0.29), "purple": (0.10, 0.41)}, ["black", "white", "purple", None], ref)
     assert ok == []
-    bad = slot_locate.spot_problems({"black": (0.69, 0.40), "white": (0.44, 0.29), "purple": (0.10, 0.41)}, ["black", "white", "purple", None], ref)
+    bad = slot_locate.spot_problems({"black": (0.66, 0.40), "white": (0.44, 0.29), "purple": (0.10, 0.41)}, ["black", "white", "purple", None], ref)
     assert len(bad) == 1 and bad[0]["object"] == "black"
     assert "sang trái" in bad[0]["sayVi"] and "lại gần robot" in bad[0]["sayVi"]
 

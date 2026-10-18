@@ -15,7 +15,7 @@ import os
 MAX_CORRECTION_DEG = float(os.getenv("PICK_MAX_CORRECTION_DEG", "3"))
 # A keyring cut off by the image edge has a biased centre: no correction there (first arm test:
 # the purple block at x~0.10 read 6 deg off and the pick missed).
-EDGE = float(os.getenv("PICK_EDGE_MARGIN", "0.15"))
+EDGE = float(os.getenv("PICK_EDGE_MARGIN", "0.08"))
 MIN_SHIFT = float(os.getenv("PICK_MIN_SHIFT", "0.01"))  # ignore image shifts under 1% of the width
 
 
@@ -53,7 +53,8 @@ def load_calibration(poses_data: dict) -> dict[int, float]:
 
 # The open gripper (~4 cm) takes a keycap (~2 cm) up to ~1.5 cm off centre: 0.05 of the image width.
 # A pick missed at 0.07 off. The long purple block's centre varies more with how it is set down.
-TOL_X = float(os.getenv("SPOT_TOL_X", "0.05"))
+# With camera pick correction on (up to 3 deg, ~0.055 of the width) only bigger offsets need a nudge.
+TOL_X = float(os.getenv("SPOT_TOL_X", "0.07"))
 TOL_Y = float(os.getenv("SPOT_TOL_Y", "0.08"))
 LOOSER = {"purple": 1.5}
 NAMES_VI = {"black": "đen", "white": "trắng", "purple": "tím"}
