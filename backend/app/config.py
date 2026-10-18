@@ -13,6 +13,9 @@ class Settings:
     # Grok (xAI) is optional; without a key the rule-based agent handles every turn.
     xai_api_key: str = os.getenv("XAI_API_KEY", "")
     xai_base_url: str = os.getenv("XAI_BASE_URL", "https://api.x.ai/v1")
+    xai_voice_url: str = os.getenv("XAI_VOICE_URL", "wss://api.x.ai/v1/realtime")
+    xai_voice_model: str = os.getenv("XAI_VOICE_MODEL", "grok-voice-latest")
+    xai_voice: str = os.getenv("XAI_VOICE", "eve")
     xai_model: str = os.getenv("XAI_MODEL", "")  # confirm the model name with SpaceXAI mentors
 
 

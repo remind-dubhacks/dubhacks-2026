@@ -1,7 +1,7 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, WebSocket
 from pydantic import BaseModel
 
-from . import agent
+from . import agent, realtime
 from .tools import GAMES, GameState
 
 router = APIRouter(prefix="/api/voice", tags=["voice"])
@@ -32,3 +32,14 @@ async def reset(body: dict) -> dict:
 @router.get("/games")
 async def games() -> list[dict]:
     return [{"id": k, **v} for k, v in GAMES.items()]
+
+
+@router.get("/status")
+async def status() -> dict:
+    """realtime=true means Grok Voice is configured; the UI then streams audio instead of using browser speech."""
+    return {"realtime": realtime.available()}
+
+
+@router.websocket("/ws")
+async def ws(websocket: WebSocket) -> None:
+    await realtime.run(websocket)

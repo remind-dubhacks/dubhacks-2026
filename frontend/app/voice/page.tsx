@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ItemCard } from "@/components/ItemCard";
 import { MAX_TRIALS } from "@/lib/reorder";
 import { voiceReset, voiceTurn, type ToolCall, type VoiceState } from "@/lib/voice";
+import { GrokVoice, realtimeAvailable } from "@/lib/grokVoice";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const SR: any = typeof window !== "undefined" ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition : null;
@@ -27,6 +28,9 @@ export default function Voice() {
   const [err, setErr] = useState<string | null>(null);
   const [hasSR, setHasSR] = useState(true);
   const endRef = useRef<HTMLDivElement>(null);
+  const [grok, setGrok] = useState(false); // true when the backend has Grok Voice configured
+  const grokRef = useRef<GrokVoice | null>(null);
+  const aiBuf = useRef("");
 
   const recRef = useRef<any>(null);
   const listeningRef = useRef(false);
@@ -35,6 +39,7 @@ export default function Voice() {
   const lastShuffle = useRef(0);
   tableRef.current = table;
 
+  useEffect(() => { realtimeAvailable().then(setGrok); }, []);
   useEffect(() => {
     try { setLog(JSON.parse(localStorage.getItem(HISTORY_KEY) ?? "[]")); } catch { /* ignore */ }
   }, []);
@@ -42,6 +47,8 @@ export default function Voice() {
     try { localStorage.setItem(HISTORY_KEY, JSON.stringify(log.slice(-100))); } catch { /* ignore */ }
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [log]);
+
+  useEffect(() => { grokRef.current?.sendTable(table); }, [table]);
 
   const startRec = useCallback(() => {
     try { if (listeningRef.current && !speakingRef.current) recRef.current?.start(); } catch { /* already started */ }
@@ -100,7 +107,38 @@ export default function Voice() {
     return () => { listeningRef.current = false; try { rec.stop(); } catch { /* */ } };
   }, [send, startRec]);
 
+  async function startGrok() {
+    setErr(null);
+    const g = new GrokVoice({
+      onUser: (text, final) => {
+        setHeard(final ? "" : text);
+        if (final && text.trim()) setLog((l) => [...l, { role: "you", text: text.trim(), at: Date.now() }]);
+      },
+      onAiDelta: (t) => { aiBuf.current += t; setBusy(true); },
+      onAiDone: (t) => {
+        const text = (t || aiBuf.current).trim();
+        aiBuf.current = ""; setBusy(false);
+        if (text) setLog((l) => [...l, { role: "ai", text, at: Date.now() }]);
+      },
+      onTool: (call, st) => {
+        setCalls((c) => [call, ...c].slice(0, 8)); setState(st);
+        setLog((l) => [...l, { role: "ai", text: "", tools: [call.name], at: Date.now() }]);
+        if (st.shuffleId !== lastShuffle.current) { lastShuffle.current = st.shuffleId; setTable(st.shuffledOrder); setPick(null); }
+      },
+      onError: (m) => setErr(m),
+      onClose: () => { setStarted(false); setListening(false); },
+    });
+    try {
+      await g.start();
+      grokRef.current = g;
+      setStarted(true); setListening(true);
+    } catch (e) {
+      setErr(`Could not start voice: ${e}`);
+    }
+  }
+
   function startConversation() {
+    if (grok) return void startGrok();
     setStarted(true);
     listeningRef.current = true; setListening(true);
     setLog((l) => [...l, { role: "ai", text: GREETING, at: Date.now() }]);
@@ -108,6 +146,12 @@ export default function Voice() {
   }
 
   function endConversation() {
+    if (grokRef.current) {
+      grokRef.current.emergencyStop();
+      setTimeout(() => { grokRef.current?.stop(); grokRef.current = null; }, 800);
+      setStarted(false); setListening(false);
+      return;
+    }
     listeningRef.current = false; setListening(false); setStarted(false);
     try { recRef.current?.stop(); } catch { /* */ }
     window.speechSynthesis?.cancel();
@@ -126,10 +170,10 @@ export default function Voice() {
   return (
     <main className="play voice">
       <h1>ReMind</h1>
-      <p className="small">{hasSR ? "Talk to the assistant; it talks back." : "This browser has no speech recognition (use Chrome); typing works."}</p>
+      <p className="small">{grok ? "Voice: Grok Voice (realtime)" : hasSR ? "Voice: browser speech (set XAI_API_KEY for Grok Voice)" : "This browser has no speech recognition (use Chrome); typing works."}</p>
 
       {!started ? (
-        <button className="primary big start" onClick={startConversation} disabled={!hasSR}>🎙️ Start conversation</button>
+        <button className="primary big start" onClick={startConversation} disabled={!hasSR && !grok}>🎙️ Start conversation</button>
       ) : (
         <div className="row">
           <span className={`badge ${listening && !busy ? "on live-dot" : ""}`}>{busy ? "Thinking…" : "Listening…"}</span>
@@ -160,7 +204,7 @@ export default function Voice() {
         {log.map((m, i) => (
           <div key={i} className={`bubble ${m.role}`}>
             <span className="who">{m.role === "you" ? "You" : "ReMind"}</span>
-            <p>{m.text}</p>
+            {m.text && <p>{m.text}</p>}
             {m.tools && m.tools.length > 0 && <p className="chips">{m.tools.map((t, j) => <span key={j} className="chip">🔧 {t}</span>)}</p>}
           </div>
         ))}
