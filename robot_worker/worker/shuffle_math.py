@@ -33,8 +33,13 @@ SHUFFLES: dict[str, Shuffle] = {
 
 
 def allowlist() -> dict[tuple[str, str], dict]:
-    """Worker job allowlist entries, one per shuffle."""
-    return {("shuffle", s.id): {"instruction": s.instruction, "shuffle": s.id} for s in SHUFFLES.values()}
+    """Worker job allowlist entries, one per shuffle. ROBOT_SHUFFLES (comma list) limits them to the
+    shuffles verified on the arm, e.g. ROBOT_SHUFFLES=swap_lr,swap_lm for the demo."""
+    import os
+
+    only = {x.strip() for x in os.getenv("ROBOT_SHUFFLES", "").split(",") if x.strip()}
+    return {("shuffle", s.id): {"instruction": s.instruction, "shuffle": s.id}
+            for s in SHUFFLES.values() if not only or s.id in only}
 
 
 # Scripted fallback (no Perceptron needed): each move is a pick and a place through taught poses.
