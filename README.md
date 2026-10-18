@@ -13,7 +13,7 @@ ReMind is an AI companion that doesn't just talk: it helps people living with de
 ## Team
 - Maia Le ([@maiaPaperTowns](https://github.com/maiaPaperTowns))
 - [@lkim0402](https://github.com/lkim0402)
-- [@alesia-cameron](https://github.com/alesia-cameron)
+- Alesia Cameron [@alesia-cameron](https://github.com/alesia-cameron)
 - [@matthewcflam](https://github.com/matthewcflam)
 
 ## Repo layout
