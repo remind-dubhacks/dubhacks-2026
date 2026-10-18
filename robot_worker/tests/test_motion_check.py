@@ -288,8 +288,16 @@ class FakeClient:
     def __init__(self, chunks):
         self.chunks = list(chunks)
 
+    grants = 0
+
     def grant(self, *a, **k):
-        return "g"
+        import types
+
+        FakeClient.grants += 1
+        return types.SimpleNamespace(expires_at=10**12)
+
+    def reset(self, *a, **k):
+        pass
 
     def create_session(self, *a, **k):
         pass
@@ -544,3 +552,12 @@ def test_scripted_executor_reports_missing_poses(monkeypatch):
     with pytest.raises(executors.RobotError) as e:
         ex.execute({"instruction": "x", "shuffle": "swap_lr"}, executors.threading.Event())
     assert e.value.code == "poses_missing" and "down_s4" in str(e.value)
+
+
+def test_one_perceptron_session_is_reused_across_jobs(limits):
+    """Closing a session puts the deployment into ~5 min of 'recovering', so jobs share one."""
+    ex = make_exec(limits, [[middle(limits)] * 30] * 200, png("ep00_end.jpg"))
+    before = FakeClient.grants
+    for _ in range(3):
+        ex.execute({"instruction": "x", "shuffle": "swap_lr"}, executors.threading.Event())
+    assert FakeClient.grants - before == 1

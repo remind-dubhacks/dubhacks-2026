@@ -123,6 +123,16 @@ class PerceptronExecutor:
         self.last_check: dict | None = None
         self.hand_pauses = 0
 
+    GRANT_TTL_S = int(os.getenv("PERCEPTRON_SESSION_TTL_S", "3600"))
+
+    def _get_grant(self):
+        """One long-lived session, reused across jobs and refreshed shortly before it expires."""
+        g = getattr(self, "_grant", None)
+        if g is None or g.expires_at - time.time() < 120:
+            g = self.client.grant(f"remind-{uuid.uuid4().hex[:12]}", ttl_seconds=self.GRANT_TTL_S)
+            self._grant = g
+        return g
+
     @staticmethod
     def say(text: str) -> None:
         from . import voice
@@ -141,7 +151,7 @@ class PerceptronExecutor:
         self.hand_pauses = 0
         wait_for_clear_table(self.robot, stop, self.say)
         try:
-            grant = self.client.grant(f"remind-{uuid.uuid4().hex[:12]}", ttl_seconds=600)
+            grant = self._get_grant()
         except Exception as e:  # noqa: BLE001
             # Perceptron refused or is unreachable (e.g. 409 deployment_recovering). The arm has not
             # moved yet, so a shuffle can safely run from taught poses instead.
@@ -152,7 +162,13 @@ class PerceptronExecutor:
                 return
             raise RobotError("policy_unavailable", str(e)[:300]) from e
         try:
-            self.client.create_session(grant, instruction, self.contract_id)
+            try:
+                self.client.create_session(grant, instruction, self.contract_id)
+            except Exception:  # noqa: BLE001
+                # The kept session may have expired: start a fresh one once.
+                self._grant = None
+                grant = self._get_grant()
+                self.client.create_session(grant, instruction, self.contract_id)
             t0 = time.monotonic()
             seq = 0
             while time.monotonic() - t0 < self.max_seconds:
@@ -216,10 +232,12 @@ class PerceptronExecutor:
         except Exception as e:  # noqa: BLE001
             raise RobotError("policy_error", str(e)) from e
         finally:
+            # Keep the session for the next job: closing it makes Perceptron spend ~5 minutes
+            # "recovering" (409 deployment_recovering). Reset starts a new episode instead.
             try:
-                self.client.delete_session(grant)
+                self.client.reset(grant)
             except Exception:  # noqa: BLE001
-                pass
+                self._grant = None
 
 
 def _black_png_like(png: bytes, _cache: dict = {}) -> bytes:  # noqa: B006
