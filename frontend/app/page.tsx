@@ -14,6 +14,10 @@ export default function Home() {
           <h2>Participant</h2>
           <p className="small">Opened from the caregiver screen once a session is approved.</p>
         </Link>
+        <Link href="/voice" className="card">
+          <h2>Voice agent (prototype)</h2>
+          <p className="small">Just say “play the ordering game”. The AI calls tools to run it.</p>
+        </Link>
         <Link href="/play" className="card">
           <h2>Play Reorder</h2>
           <p className="small">Resident game screen: the robot shuffles, you put things back in order.</p>
