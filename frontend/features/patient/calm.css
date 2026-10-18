@@ -2,13 +2,13 @@
    The font stylesheet is linked from CalmStage (an @import here would be dropped once CSS is bundled). */
 
 .calm {
-  --ground-top: rgb(255, 144, 54);
-  --ground-bottom: rgb(230, 235, 208);
+  --ground-top: rgb(214, 232, 240);
+  --ground-bottom: rgb(230, 239, 216);
   --ground: linear-gradient(180deg, var(--ground-top) 0%, var(--ground-bottom) 100%);
-  --ink: #2a1a0e;
+  --ink: #1e2b26;
   --font: "Atkinson Hyperlegible Next", system-ui, sans-serif;
   --photo-radius: 32px;
-  --photo-shadow: 0 24px 60px rgba(42, 26, 14, 0.18);
+  --photo-shadow: 0 24px 60px rgba(30, 43, 38, 0.14);
   --fade: 1200ms ease-in-out;
 
   position: fixed;

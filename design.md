@@ -1,21 +1,21 @@
 # Calm — Design System
 
-A companion screen for people living with dementia. The screen shows a warm gradient, and sometimes a photo or a few words. Nothing else.
+A companion screen for people living with dementia. The screen shows a soft sky-to-meadow gradient, and sometimes a photo or a few words. Nothing else.
 
 ## Elements
 
 The UI has exactly three elements. Never add any others.
 
 ### 1. Ground (always on)
-Full-screen vertical gradient. Source: Figma frame "Desktop - 1" (1440×1024).
+Full-screen vertical gradient. Soft morning sky fading into a pale meadow.
 
 ```css
-background: linear-gradient(180deg, rgb(255,144,54) 0%, rgb(230,235,208) 100%);
+background: linear-gradient(180deg, rgb(214,232,240) 0%, rgb(230,239,216) 100%);
 ```
 
 ### 2. Words
 - Font: **Atkinson Hyperlegible Next** (Google Fonts, weights 400 and 600). It was designed for low vision: open shapes, no easily confused letters.
-- Ink: `#2A1A0E` (deep warm brown). Contrast is 7.6:1 on the orange stop and 14:1 on the sage stop.
+- Ink: `#1E2B26` (deep pine). Contrast is 11.7:1 on the sky stop and 12.4:1 on the meadow stop.
 - Always centered, `text-wrap: balance`.
 
 | Style   | Size / line-height | Weight | Use                      |
@@ -28,7 +28,7 @@ On a 1440px-wide screen. Scale with viewport: Message = 4.44vw, Caption = 2.78vw
 ### 3. Photos
 - One at a time, centered.
 - Corner radius: 32px.
-- Shadow: `0 24px 60px rgba(42,26,14,0.18)`.
+- Shadow: `0 24px 60px rgba(30,43,38,0.14)`.
 - No frames, overlays, borders or controls.
 - Size: about 56% of screen width when alone, about 46% when paired with a caption.
 
@@ -60,15 +60,15 @@ On a 1440px-wide screen. Scale with viewport: Message = 4.44vw, Caption = 2.78vw
 @import url("https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:wght@400;600&display=swap");
 
 :root {
-  --ground-top: rgb(255,144,54);
-  --ground-bottom: rgb(230,235,208);
+  --ground-top: rgb(214,232,240);
+  --ground-bottom: rgb(230,239,216);
   --ground: linear-gradient(180deg, var(--ground-top) 0%, var(--ground-bottom) 100%);
-  --ink: #2A1A0E;
+  --ink: #1E2B26;
   --font: "Atkinson Hyperlegible Next", system-ui, sans-serif;
   --text-message: 600 64px/1.25 var(--font);
   --text-caption: 400 40px/1.35 var(--font);
   --photo-radius: 32px;
-  --photo-shadow: 0 24px 60px rgba(42,26,14,0.18);
+  --photo-shadow: 0 24px 60px rgba(30,43,38,0.14);
   --fade: 1200ms ease-in-out;
 }
 ```

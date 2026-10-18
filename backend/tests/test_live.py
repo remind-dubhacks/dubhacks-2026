@@ -58,3 +58,49 @@ def test_live_relay(monkeypatch):
     assert setup["tools"][0]["functionDeclarations"][0]["name"] == "list_games" and "inputAudioTranscription" in setup
     assert any("audio" in e.get("realtimeInput", {}) for e in received)
     assert any("toolResponse" in e for e in received)
+
+
+def test_build_setup_uses_settings():
+    from app.voice.live import VAD_PRESETS, build_setup
+    gen = build_setup("Ann", ["faces"])["setup"]["generationConfig"]
+    assert gen["temperature"] == settings.gemini_live_temperature and gen["maxOutputTokens"] == settings.gemini_live_max_output_tokens
+    setup = build_setup("Ann", ["faces"], vad="default")["setup"]
+    assert setup["realtimeInputConfig"]["automaticActivityDetection"] == VAD_PRESETS["default"]
+    assert setup["realtimeInputConfig"]["automaticActivityDetection"]["silenceDurationMs"] == 1200
+    assert "outputAudioTranscription" in setup and "Ann" in setup["systemInstruction"]["parts"][0]["text"]
+    legacy = build_setup("Ann", ["faces"], vad="legacy", temperature=-1, max_output_tokens=0)["setup"]["generationConfig"]
+    assert "temperature" not in legacy and "maxOutputTokens" not in legacy
+
+
+def test_should_remind(monkeypatch):
+    from app.voice.live import should_remind
+    monkeypatch.setattr(settings, "gemini_live_remind_every", 8)
+    monkeypatch.setattr(settings, "gemini_live_remind_words", 40)
+    assert should_remind(8, 0, [])
+    assert not should_remind(8, 8, [])  # already reminded at this turn
+    assert not should_remind(3, 0, [50])
+    assert should_remind(3, 0, [41, 60])
+    assert not should_remind(3, 0, [41, 12])
+
+
+def test_live_relay_sends_reminder_without_turn_complete(monkeypatch):
+    port, received = [], []
+    threading.Thread(target=fake_gemini, args=(port, received), daemon=True).start()
+    for _ in range(50):
+        if port:
+            break
+        threading.Event().wait(0.05)
+    monkeypatch.setattr(settings, "gemini_api_key", "test")
+    monkeypatch.setattr(settings, "gemini_live_url", f"ws://127.0.0.1:{port[0]}")
+    monkeypatch.setattr(settings, "gemini_live_remind_every", 1)
+
+    got = []
+    with TestClient(main.app) as c, c.websocket_connect("/api/voice/live") as ws:
+        while not any(m["type"] == "ai_done" for m in got):
+            got.append(ws.receive_json())
+        for _ in range(50):
+            if any("clientContent" in e for e in received):
+                break
+            threading.Event().wait(0.05)
+    cc = next(e["clientContent"] for e in received if "clientContent" in e)
+    assert cc["turnComplete"] is False and "short sentences" in cc["turns"][0]["parts"][0]["text"]
