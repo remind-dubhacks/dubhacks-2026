@@ -45,7 +45,7 @@ def order_from_text(text: str, objects: list[str]) -> list[str]:
         # A short name or colour word counts only if it can't also be part of another object's name
         # ("keycap" alone is ambiguous once there are three keycaps; "black" is not).
         aliases = {o} | {
-            a for a in (OBJECTS[o]["short"], o.split()[0])
+            a for a in (OBJECTS[o]["short"], o.split()[0], *OBJECTS[o].get("aliases", []))
             if not any(a in x or a in OBJECTS[x]["short"] for x in others)
         }
         idx = [m.start() for name in aliases for m in re.finditer(rf"\b{re.escape(name)}\b", t)]
@@ -56,7 +56,7 @@ def order_from_text(text: str, objects: list[str]) -> list[str]:
 
 class OrderMemory:
     def __init__(self, objects: list[str] | None = None, max_rounds: int = 3, seed: int | None = None,
-                 fixed_start: list[str] | None = None) -> None:
+                 fixed_start: list[str] | None = None, all_objects: bool = False) -> None:
         # fixed_start: the robot's trained skill only knows one start layout, so every round begins there.
         self.fixed_start = [o for o in fixed_start if o in OBJECTS] if fixed_start else None
         objects = self.fixed_start or objects
@@ -84,7 +84,9 @@ class OrderMemory:
         self.revealed = False  # avoid repeating the same shuffle twice in a row
         self.offered_show = False  # the robot offered to show the answer
         self.shown_by_robot = False
-        if self.fixed_start:
+        # all_objects: every round uses the whole set (the three keycaps); easier rounds use easy swaps instead.
+        self.min_level = max(LEVELS) if (self.fixed_start or all_objects) else 1
+        if self.fixed_start or all_objects:
             self.level = max(LEVELS)  # the robot skill works on a row of three
 
     def short(self, o: str) -> str:
@@ -312,7 +314,7 @@ class OrderMemory:
         last = self.log[-1].help if self.log else 1
         if last == 0 and self.level < max(LEVELS) and len(self.pool) > LEVELS[self.level]:
             self.level += 1
-        elif last == 2 and self.level > 1:
+        elif last == 2 and self.level > self.min_level:
             self.level -= 1
         if self.recall_due is None:
             self.recall_due = self.round + SPACED_INTERVALS[0]

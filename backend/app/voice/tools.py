@@ -548,7 +548,9 @@ async def run_tool(state: GameState, name: str, args: dict, table_order: list[st
                 if mover_of(state) == "robot" and not await robot_ready():
                     state.mover = "caregiver"  # robot offline: a caregiver moves the keyrings; the camera still follows
                     log_feed(state, "robot", "offline: a caregiver will move the keyrings this time", tone="warn")
-                state.fr = OrderMemory(objects=state.objects or FR_OBJECTS, fixed_start=ROBOT_START if mover_of(state) == "robot" else None)
+                objects = state.objects or FR_OBJECTS
+                state.fr = OrderMemory(objects=objects, fixed_start=ROBOT_START if mover_of(state) == "robot" else None,
+                                       all_objects=set(objects) == set(ROBOT_START))  # the three keycaps: always all three
             state.watch, state.robot, state.pending_say = None, {}, []
             state.phase = "exercise"
             step = state.fr.start()

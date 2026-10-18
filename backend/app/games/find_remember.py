@@ -73,7 +73,8 @@ OBJECTS: dict[str, dict] = {
         ],
     },
     "white keycap": {
-        "short": "keycap",
+        "short": "white one",
+        "aliases": ["keycap"],  # still understood when it's the only keycap in the row
         "use": "This comes from a keyboard. What would you like to type?",
         "memories": [
             "Did you ever use a typewriter or a computer keyboard?",

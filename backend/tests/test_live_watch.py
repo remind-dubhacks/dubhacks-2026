@@ -459,3 +459,25 @@ def test_playground_can_follow_a_live_session():
         assert d["active"] and d["name"] == "Rose"
     finally:
         tools.LIVE.pop("live1", None)
+
+
+def test_keycap_game_always_uses_all_three_even_after_help():
+    om = OrderMemory(objects=ORIG, all_objects=True, seed=2)
+    for _ in range(3):
+        om.start()
+        assert sorted(om.original) == sorted(ORIG)
+        om.shuffle(pattern=(1, 0, 2))
+        om.after_shuffle()
+        om.robot_showed()  # needed full help: would normally drop to two objects
+        om.shared("skip")
+    assert om.level == 2
+
+
+def test_playground_simulated_game_shows_three_keycaps():
+    from fastapi.testclient import TestClient
+
+    from app import main
+
+    with TestClient(main.app) as c:
+        r = c.post("/api/play/start", json={"sessionId": "k3", "mover": "simulated"}).json()
+    assert sorted(r["state"]["exercise"]["answer"]) == sorted(ORIG)
