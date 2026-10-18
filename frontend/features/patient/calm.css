@@ -181,6 +181,16 @@
 .calm-setup .field-well :is(input, select):focus-visible { outline: 4px solid #2f6248; outline-offset: 3px; }
 .calm-setup .field-well input::placeholder { color: var(--placeholder); }
 .calm-setup .field-note { font-size: max(14px, calc(16 * var(--u))); color: var(--ink-muted); }
+.calm-setup .test-text {
+  padding: calc(8 * var(--u)) calc(18 * var(--u));
+  border-radius: calc(14 * var(--u));
+  font-size: max(14px, calc(17 * var(--u)));
+  font-weight: 600;
+  color: var(--text);
+  background: var(--surface);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8), inset 0 -2px 0 rgba(0, 0, 0, 0.1), 0 2px 3px rgba(30, 43, 38, 0.3);
+}
+.calm-setup .test-text:active { transform: translateY(1px); }
 
 .tray {
   padding: calc(6 * var(--u));
