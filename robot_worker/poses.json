@@ -58,20 +58,20 @@
       "gripper.pos": 21.36
     },
     "above_s4": {
-      "shoulder_pan.pos": 34.59,
-      "shoulder_lift.pos": -27.52,
-      "elbow_flex.pos": 28.57,
-      "wrist_flex.pos": 41.45,
-      "wrist_roll.pos": 126.02,
-      "gripper.pos": 38.03
+      "shoulder_pan.pos": 35.56,
+      "shoulder_lift.pos": 6.95,
+      "elbow_flex.pos": -12.66,
+      "wrist_flex.pos": 79.78,
+      "wrist_roll.pos": 126.55,
+      "gripper.pos": 32.59
     },
     "down_s4": {
-      "shoulder_pan.pos": 35.56,
-      "shoulder_lift.pos": 15.74,
-      "elbow_flex.pos": 20.66,
-      "wrist_flex.pos": 42.07,
-      "wrist_roll.pos": 126.02,
-      "gripper.pos": 38.09
+      "shoulder_pan.pos": 36.53,
+      "shoulder_lift.pos": 35.43,
+      "elbow_flex.pos": -12.84,
+      "wrist_flex.pos": 71.78,
+      "wrist_roll.pos": 126.46,
+      "gripper.pos": 32.59
     }
   },
   "sequences": {
@@ -127,22 +127,22 @@
     ]
   },
   "camera_x": {
-    "1": 0.8108,
-    "2": 0.539,
-    "3": 0.2056
+    "1": 0.8288,
+    "2": 0.5531,
+    "3": 0.2324
   },
   "camera_xy": {
     "1": [
-      0.8108,
-      0.1979
+      0.8288,
+      0.2027
     ],
     "2": [
-      0.539,
-      0.219
+      0.5531,
+      0.2311
     ],
     "3": [
-      0.2056,
-      0.4066
+      0.2324,
+      0.3497
     ]
   }
 }
