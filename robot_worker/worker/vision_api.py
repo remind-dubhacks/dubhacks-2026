@@ -159,6 +159,9 @@ def detect_image(body: ImageIn) -> dict:
 side_cam = None
 
 
+robot_frame = None  # set by main: the robot's own side camera, when the executor holds it
+
+
 def side_frame() -> tuple[np.ndarray | None, str]:
     """Freshest side-camera frame from whatever already has the camera open."""
     import os
@@ -166,6 +169,13 @@ def side_frame() -> tuple[np.ndarray | None, str]:
     from .table_view import SideCamera
 
     global side_cam
+    if robot_frame is not None:
+        try:
+            f = robot_frame()
+            if f is not None:
+                return f, "robot-camera"
+        except Exception:  # noqa: BLE001
+            pass
     index = int(os.getenv("SIDE_CAMERA_INDEX", "0"))
     with latest_lock:
         cur = latest.get(index)
@@ -190,3 +200,40 @@ def row() -> dict:
     if frame is None:
         raise HTTPException(503, f"no side-camera frame ({source})")
     return {**look(frame), "source": source, "t": time.time()}
+
+
+@router.get("/side.jpg")
+def side_jpg():
+    """One side-camera snapshot (for checking the table layout)."""
+    from fastapi.responses import Response
+
+    frame, source = side_frame()
+    if frame is None:
+        raise HTTPException(503, f"no side-camera frame ({source})")
+    ok, jpg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+    return Response(jpg.tobytes(), media_type="image/jpeg")
+
+
+class CalibrateIn(BaseModel):
+    start: list[str] = ["black", "white", "purple"]
+
+
+@router.post("/calibrate-slots")
+def calibrate_slots(body: CalibrateIn) -> dict:
+    """With the row in its start layout, save where slots 1-3 appear in the side camera.
+    The scripted shuffles use it to line up each pick with where the keyring really is."""
+    from .robot import load_poses, save_poses
+    from .row_check import find, read_row
+
+    frame, source = side_frame()
+    if frame is None:
+        raise HTTPException(503, f"no side-camera frame ({source})")
+    row = read_row(frame)
+    if row["order"] != body.start:
+        raise HTTPException(409, f"camera sees {row['seen']} (order {row['order']}); set the row to {body.start} first")
+    found = find(frame)
+    cal = {str(i + 1): round(found[o][0], 4) for i, o in enumerate(body.start)}
+    data = load_poses()
+    data["camera_x"] = cal
+    save_poses(data)
+    return {"camera_x": cal, "source": source}

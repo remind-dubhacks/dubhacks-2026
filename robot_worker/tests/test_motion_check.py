@@ -561,3 +561,65 @@ def test_one_perceptron_session_is_reused_across_jobs(limits):
     for _ in range(3):
         ex.execute({"instruction": "x", "shuffle": "swap_lr"}, executors.threading.Event())
     assert FakeClient.grants - before == 1
+
+
+# ---------------------------------------------------------------- camera-guided picks
+
+from worker import slot_locate  # noqa: E402
+
+
+def test_pan_line_fits_the_taught_slots():
+    slope, icpt = slot_locate.fit({1: 0.75, 2: 0.44, 3: 0.12}, {1: -13.0, 2: -1.1, 3: 15.1})
+    assert slope < 0  # camera is mirrored: further right in the image = slot 1 = more negative pan
+    assert abs(slope * 0.44 + icpt - (-1.1)) < 1.5
+
+
+def test_pick_correction_follows_the_keyring_and_is_capped():
+    cal = {1: 0.75, 2: 0.44, 3: 0.12}
+    slope, _ = slot_locate.fit(cal, {1: -13.0, 2: -1.1, 3: 15.1})
+    assert slot_locate.pan_correction(0.755, 2, cal, slope) == 0.0 or abs(slot_locate.pan_correction(0.445, 2, cal, slope)) < 1e-9
+    small = slot_locate.pan_correction(0.40, 2, cal, slope)  # keyring a bit toward slot 3
+    assert 0 < small < slot_locate.MAX_CORRECTION_DEG
+    assert slot_locate.pan_correction(0.0, 1, cal, slope) == slot_locate.MAX_CORRECTION_DEG
+    assert slot_locate.pan_correction(0.5, 4, cal, slope) == 0.0  # slot 4 is out of view
+
+
+class CameraArm(FakeArm):
+    def __init__(self, positions, *a, **k):
+        super().__init__([0] * 6, None)
+        import types
+
+        self.robot = types.SimpleNamespace(cameras={"side": object()})
+        self.positions = positions
+
+    def side_frame(self):
+        return TABLE
+
+
+def guided(monkeypatch, positions):
+    poses = {p: {"shoulder_pan.pos": 0.0, "shoulder_lift.pos": 0.0} for p in SCRIPT_POSES}
+    for s, pan in {1: -13.0, 2: -1.1, 3: 15.1, 4: 27.5}.items():
+        for k in ("above", "down"):
+            poses[f"{k}_s{s}"]["shoulder_pan.pos"] = pan
+    data = {"poses": poses, "sequences": {}, "camera_x": {"1": 0.75, "2": 0.44, "3": 0.12}}
+    monkeypatch.setattr("worker.robot.load_poses", lambda: data)
+    monkeypatch.setattr("worker.row_check.find", lambda f: positions)
+    monkeypatch.setattr("worker.row_check.read_row", lambda f: {"order": sorted(positions, key=lambda o: -positions[o][0]) if len(positions) == 3 else [None] * 3, "visible": len(positions), "seen": list(positions)})
+    monkeypatch.setattr(executors, "shuffle_check", lambda spec, side: None)
+    return executors.ScriptedExecutor(robot=CameraArm(positions))
+
+
+def test_off_center_keyring_is_picked_where_it_really_is(monkeypatch):
+    ex = guided(monkeypatch, {"black": (0.70, 900), "white": (0.44, 900), "purple": (0.12, 900)})
+    ex.execute({"instruction": "x", "shuffle": "swap_lr"}, executors.threading.Event())
+    first = ex.corrections[0]
+    assert first["slot"] == 1 and first["object"] == "black" and first["panDeg"] > 0
+    downs = [t for k, t in ex.robot.path if k == "move" and abs(t["shoulder_pan.pos"] - (-13.0 + first["panDeg"])) < 0.01]
+    assert downs  # the slot-1 pick went to the corrected pan
+
+
+def test_wrong_start_layout_never_moves(monkeypatch):
+    ex = guided(monkeypatch, {"white": (0.75, 900), "black": (0.44, 900), "purple": (0.12, 900)})
+    with pytest.raises(executors.RobotError) as e:
+        ex.execute({"instruction": "x", "shuffle": "swap_lr"}, executors.threading.Event())
+    assert e.value.code == "start_mismatch" and ex.robot.path == []

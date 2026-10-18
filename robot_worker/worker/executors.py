@@ -282,9 +282,86 @@ class ScriptedExecutor:
 
         voice.speak(text)
 
+    def _frame(self):
+        """Current side-camera frame (BGR) or None."""
+        try:
+            f = self.robot.side_frame()
+            if f is not None:
+                return f
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            import cv2
+            import numpy as np
+
+            _, side, _ = self.robot.observe()
+            return cv2.imdecode(np.frombuffer(side, np.uint8), cv2.IMREAD_COLOR) if side else None
+        except Exception:  # noqa: BLE001
+            return None
+
+    def _scripted_shuffle(self, spec: dict, stop: threading.Event, camera: bool) -> None:
+        """Pick-and-place through taught poses. With the camera calibrated: check the row first,
+        and line up each pick with where the keyring really is."""
+        from .robot import GRIPPER, load_poses
+        from .row_check import find, read_row
+        from .shuffle_math import GRIP_CLOSE, GRIP_OPEN, SHUFFLES
+        from .slot_locate import fit, load_calibration, pan_correction
+
+        data = load_poses()
+        # Taught poses carry whatever the gripper was doing while teaching; the script opens and
+        # closes the gripper itself, so poses only move the arm joints.
+        poses = {k: {j: v for j, v in p.items() if j != GRIPPER} for k, p in data["poses"].items()}
+        start = list(spec.get("start") or DEFAULT_START)
+        cal = load_calibration(data) if camera else {}
+        slope = None
+        if cal:
+            try:
+                slope, _ = fit(cal, {s: poses[f"down_s{s}"]["shoulder_pan.pos"] for s in cal})
+            except ValueError:
+                cal = {}
+        self.corrections: list[dict] = []
+
+        if camera:
+            frame = self._frame()
+            seen = read_row(frame)["order"] if frame is not None else None
+            if seen and all(seen) and seen != start:
+                raise RobotError("start_mismatch", f"table shows {seen}, expected {start}; set the row first")
+
+        def move(pose: dict) -> None:
+            self.robot.move_to(pose, stop, self.SPEED)
+
+        def grip(v: float, wait: float) -> None:
+            self.robot.gripper(v, stop)
+            if stop.wait(wait):
+                raise Stopped()
+
+        row: list[str | None] = [*start, None]
+        move(poses["home"])
+        grip(GRIP_OPEN, 0.2)
+        for a, b in SHUFFLES[spec["shuffle"]].moves:
+            obj = row[a - 1]
+            corr = 0.0
+            if cal and slope is not None and a in cal:
+                frame = self._frame()
+                found = find(frame) if frame is not None else {}
+                if obj in found:
+                    corr = pan_correction(found[obj][0], a, cal, slope)
+                    self.corrections.append({"slot": a, "object": obj, "x": round(found[obj][0], 3), "panDeg": round(corr, 2)})
+            above = {**poses[f"above_s{a}"], "shoulder_pan.pos": poses[f"above_s{a}"]["shoulder_pan.pos"] + corr}
+            down = {**poses[f"down_s{a}"], "shoulder_pan.pos": poses[f"down_s{a}"]["shoulder_pan.pos"] + corr}
+            move(above)
+            move(down)
+            grip(GRIP_CLOSE, 0.4)
+            move(above)
+            move(poses[f"above_s{b}"])
+            move(poses[f"down_s{b}"])
+            grip(GRIP_OPEN, 0.3)
+            move(poses[f"above_s{b}"])
+            row[b - 1], row[a - 1] = obj, None
+        move(poses["home"])
+
     def execute(self, spec: dict, stop: threading.Event) -> None:
-        from .robot import load_poses, run_sequence, run_steps
-        from .shuffle_math import scripted_steps
+        from .robot import run_sequence
 
         self.last_check = None
         has_camera = hasattr(self.robot, "side_frame") and getattr(getattr(self.robot, "robot", None), "cameras", None)
@@ -295,10 +372,7 @@ class ScriptedExecutor:
                 missing = self.missing_poses()
                 if missing:
                     raise RobotError("poses_missing", "teach these poses first: " + ", ".join(missing))
-                # Taught poses carry whatever the gripper was doing while teaching; the script opens and
-                # closes the gripper itself, so poses only move the arm joints.
-                poses = {k: {j: v for j, v in p.items() if j != "gripper.pos"} for k, p in load_poses()["poses"].items()}
-                run_steps(self.robot, scripted_steps(spec["shuffle"]), poses, stop, self.SPEED, spec["shuffle"])
+                self._scripted_shuffle(spec, stop, bool(has_camera))
             else:
                 run_sequence(self.robot, spec["sequence"], stop)
         except (Stopped, RobotError):
@@ -315,6 +389,6 @@ class ScriptedExecutor:
                 side = None
         check = shuffle_check(spec, side)
         if check:
-            self.last_check = {**check, "mode": "scripted"}
+            self.last_check = {**check, "mode": "scripted", "pickCorrections": getattr(self, "corrections", [])}
             if check["verdict"] == "mismatch":
                 raise RobotError("shuffle_mismatch", f"expected {check['expected']}, saw {check['observed']}")

@@ -35,6 +35,8 @@ REQUIRE_VERIFICATION = os.getenv("REQUIRE_VERIFICATION", "true").lower() == "tru
 MODE = os.getenv("ROBOT_MODE", "mock")
 EXECUTORS = {"mock": MockExecutor, "perceptron": PerceptronExecutor, "scripted": ScriptedExecutor}
 executor = EXECUTORS[MODE]()
+if getattr(getattr(getattr(executor, "robot", None), "robot", None), "cameras", None):
+    vision_api.robot_frame = executor.robot.side_frame  # row checks read the camera the robot holds
 
 app = FastAPI(title="ReMind robot worker")
 app.add_middleware(
@@ -57,6 +59,9 @@ class JobIn(BaseModel):
     jobId: str
     actionId: str
     objectId: str
+    # Shuffles only: the row before the move, slot 1 first (black/white/purple). Defaults to the
+    # recording start layout. Lets the camera check a shuffle that starts from a mixed row.
+    start: list[str] | None = None
 
 
 def now() -> str:
@@ -107,6 +112,12 @@ def submit(body: JobIn):
         if active_job is not None:
             raise HTTPException(409, "robot is busy")
         active_job = body.jobId
+    if body.start is not None:
+        if sorted(body.start) != ["black", "purple", "white"] or "shuffle" not in spec:
+            with lock:
+                active_job = None
+            raise HTTPException(422, "start must be black, white and purple in some order (shuffle jobs only)")
+        spec = {**spec, "start": list(body.start)}
     stop_event.clear()
     jobs[body.jobId] = {**body.model_dump(), "status": "queued", "errorCode": None, "queuedAt": now()}
     threading.Thread(target=run, args=(body.jobId, spec), daemon=True).start()
