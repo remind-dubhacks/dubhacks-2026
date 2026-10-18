@@ -9,6 +9,7 @@ ReMind is an AI companion that doesn't just talk: it helps people living with de
 ## Docs
 - [Product & engineering spec](docs/SPEC.md)
 - [Perceptron Robotics API notes](docs/PERCEPTRON_API.md)
+- [Find & Remember: evidence-based object memory activity](docs/EXERCISE_FIND_AND_REMEMBER.md)
 - [Training playbook: record, train and test the SO-101](docs/TRAINING.md)
 - [Requirements and team roles](docs/REQUIREMENTS.md)
 - [Code ownership (who edits which folder)](docs/OWNERSHIP.md)
