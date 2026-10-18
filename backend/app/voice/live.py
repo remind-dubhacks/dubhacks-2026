@@ -27,7 +27,7 @@ from ..tasks import background
 from . import memory
 from .agent import GEMINI_DECLS, STOP_RE
 from .prompts.voice_system_prompt import VOICE_SYSTEM_PROMPT, render_profile
-from .tools import GAMES, TOOL_SCHEMAS, GameState, check_motors, run_tool, session_summary, watch_table
+from .tools import GAMES, LIVE, TOOL_SCHEMAS, GameState, check_motors, run_tool, session_summary, watch_table
 from .upstreams import BackboardUpstream, GeminiUpstream, context_message
 
 log = logging.getLogger("remind.live")
@@ -208,6 +208,7 @@ async def run(ws: WebSocket) -> None:
     games = [g for g in (ws.query_params.get("games") or "").split(",") if g in GAMES] or list(GAMES)
     phone = normalize_phone(ws.query_params.get("phone") or "")
     state = GameState(patient_name=name, enabled_games=games, caregiver_phone=phone, session_id=uuid.uuid4().hex)
+    LIVE[state.session_id] = state  # the playground can follow this session
     nudge_after = SLOW_NUDGE_AFTER_S if needs_slow_pacing(profile) else NUDGE_AFTER_S
     started_at = datetime.now(timezone.utc)
     user_buf = ai_buf = ""
@@ -382,6 +383,7 @@ async def run(ws: WebSocket) -> None:
         await asyncio.gather(*tasks, return_exceptions=True)  # the reader must be gone before close() reads
         if user_buf.strip():  # cut off mid-turn; the browser may be gone, so just keep it for the digest
             said.append(user_buf.strip())
+        LIVE.pop(state.session_id, None)
         await save_record(ws, state, started_at, participant.get("_id"))
         summary = session_summary(state)
         if summary and state.caregiver_phone:  # Photon: the caregiver hears how it went without asking

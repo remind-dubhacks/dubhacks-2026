@@ -14,11 +14,26 @@ type Exercise = {
   summary?: { rounds: number; restoredAlone: number; restoredWithChoice: number; restoredTogether: number };
 };
 type LogLine = { t: string; who: "robot" | "camera" | "agent" | "you"; text: string; tone?: "ok" | "warn" };
+type FeedItem = { t: number; who: string; text?: string; kind?: string; event?: Ev; check?: string; tone?: "ok" | "warn" };
 type Robot = { reachable: boolean; mode?: string; ready?: boolean; busy?: boolean; motors?: Record<string, { ok: boolean; tempC: number }> };
 
 const SPOT = ["left", "middle", "right"];
 const SWATCH: Record<string, string> = { black: "#23262a", white: "#f6f3ea", purple: "#8d72c9" };
 const now = () => new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+
+function fromFeed(f: FeedItem): LogLine | null {
+  const t = new Date(f.t * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  if (f.who === "camera" && f.event) { const l = describe(f.event); return l && { ...l, t }; }
+  if (f.who === "robot") {
+    const k = f.kind;
+    const text = k === "paused_for_hand" ? "paused: a hand is on the table" : k === "resumed" ? "table clear, carrying on" : k === "checking" ? "checking the row with the camera"
+      : k === "checked" ? "row checked" : k === "moving" ? "moving" : k === "hand_timeout" ? "stopped: a hand stayed on the table" : f.text ?? "";
+    return { t, who: "robot", text: f.check ? `${text} (camera check: ${f.check})` : text, tone: f.tone ?? (k === "hand_timeout" ? "warn" : undefined) };
+  }
+  if (f.who === "agent") return { t, who: "agent", text: f.text ?? "" };
+  if (f.who === "player") return { t, who: "you", text: f.text ?? "" };
+  return null;
+}
 
 function describe(e: Ev): LogLine | null {
   const t = now();
@@ -49,6 +64,8 @@ export default function Playground() {
   const [camera, setCamera] = useState<boolean | null>(null);
   const [err, setErr] = useState("");
   const [frame, setFrame] = useState(0);
+  const [live, setLive] = useState<{ active: boolean; name?: string; game?: string; state?: { exercise?: Exercise }; feed?: FeedItem[] } | null>(null);
+  const [follow, setFollow] = useState(true);
   const [camOk, setCamOk] = useState(true);
   const lastRobot = useRef("");
   const add = (l: LogLine | null) => l && setLog((ls) => [l, ...ls].slice(0, 80));
@@ -116,6 +133,18 @@ export default function Playground() {
     return () => clearInterval(id);
   }, []);
 
+  // Follow the real patient session when one is running (read-only).
+  useEffect(() => {
+    let alive = true;
+    const get = () => fetch(`${API}/api/play/live`).then((r) => r.json()).then((d) => { if (alive) setLive(d); }).catch(() => {});
+    get();
+    const id = setInterval(get, 1500);
+    return () => { alive = false; clearInterval(id); };
+  }, []);
+  const following = !!live?.active && follow && !ex;
+  const viewEx: Exercise | null = following ? (live?.state?.exercise ?? null) : ex;
+  const viewLog: LogLine[] = following ? (live?.feed ?? []).map(fromFeed).filter((l): l is LogLine => !!l).reverse() : log;
+
   // Live camera: a fresh annotated frame about once a second while the robot is reachable.
   useEffect(() => {
     if (!robot?.reachable) return;
@@ -154,40 +183,47 @@ export default function Playground() {
       </div>
       {mover === "robot" && <p className="pg-warn">The arm will move. Keep the emergency stop within reach and hands off the table while it moves.</p>}
       {err && <p className="pg-error">{err}</p>}
+      {live?.active && (
+        <div className="pg-face pg-live">
+          <span className="pg-stat"><span className="pg-dot on" />Live patient session: {live.name}{live.game ? ` · ${live.game.replace("_", " ")}` : ""}</span>
+          {ex ? <span className="pg-muted">Stop your test game to follow it.</span>
+            : <button className="pg-chip" onClick={() => setFollow((f) => !f)}>{follow ? "Following live (read-only)" : "Follow it here"}</button>}
+        </div>
+      )}
 
       <div className="pg-grid">
         <section className="pg-face">
           <h2>Table</h2>
-          {!ex ? <p className="pg-muted">Start a game to see the row.</p> : (
+          {!viewEx ? <p className="pg-muted">{live?.active ? `${live.name} is doing another activity right now.` : "Start a game here, or start Remember the Order on the patient screen to follow it live."}</p> : (
             <>
-              <p className="pg-status">{ex.robot?.status === "moving" ? "The robot is moving…" : ex.phase === "restore" ? "Player's turn: putting the row back" : `Phase: ${ex.phase}`}</p>
-              <div className="pg-row" style={{ gridTemplateColumns: `repeat(${ex.row.length}, 1fr)` }}>
-                {ex.row.map((o, i) => {
-                  const right = o === ex.answer[i];
-                  const judged = ex.phase === "restore";
+              <p className="pg-status">{viewEx.robot?.status === "moving" ? "The robot is moving…" : viewEx.phase === "restore" ? "Player's turn: putting the row back" : `Phase: ${viewEx.phase}`}</p>
+              <div className="pg-row" style={{ gridTemplateColumns: `repeat(${viewEx.row.length}, 1fr)` }}>
+                {viewEx.row.map((o, i) => {
+                  const right = o === viewEx.answer[i];
+                  const judged = viewEx.phase === "restore";
                   return (
                     <div key={i} className={`pg-slot ${judged ? (right ? "right" : "off") : ""}`}>
                       <span className="pg-key" style={{ background: SWATCH[o?.split(" ")[0]] ?? "#c9cfc6" }} />
                       <b>{o}</b>
-                      <small>{(ex.row.length === 2 ? ["left", "right"] : SPOT)[i]}{judged ? (right ? " · right spot" : ` · belongs: ${ex.answer[i]}`) : ""}</small>
+                      <small>{(viewEx.row.length === 2 ? ["left", "right"] : SPOT)[i]}{judged ? (right ? " · right spot" : ` · belongs: ${viewEx.answer[i]}`) : ""}</small>
                     </div>
                   );
                 })}
               </div>
-              <p className="pg-muted">Original order (caregiver only): {ex.answer.join(" · ")}</p>
-              {ex.say && <p className="pg-say">“{ex.say}”</p>}
-              <div className="pg-actions">
-                {ex.options.map((o) => <button key={o} className="pg-chip" onClick={() => say(o)}>{o}</button>)}
-                {ex.phase === "study" && <button className="pg-chip" onClick={() => say(ex.answer.join(", "))}>Say them back</button>}
-                {ex.phase === "restore" && <button className="pg-chip" onClick={() => say("done")}>I&apos;m done</button>}
-                {(ex.phase === "reminisce" || ex.phase === "recall") && <button className="pg-chip" onClick={() => say("skip")}>Skip</button>}
+              <p className="pg-muted">Original order (caregiver only): {viewEx.answer.join(" · ")}</p>
+              {viewEx.say && <p className="pg-say">“{viewEx.say}”</p>}
+              {!following && (<><div className="pg-actions">
+                {viewEx.options.map((o) => <button key={o} className="pg-chip" onClick={() => say(o)}>{o}</button>)}
+                {viewEx.phase === "study" && <button className="pg-chip" onClick={() => say(viewEx.answer.join(", "))}>Say them back</button>}
+                {viewEx.phase === "restore" && <button className="pg-chip" onClick={() => say("done")}>I&apos;m done</button>}
+                {(viewEx.phase === "reminisce" || viewEx.phase === "recall") && <button className="pg-chip" onClick={() => say("skip")}>Skip</button>}
               </div>
               <form className="pg-say-form" onSubmit={(e) => { e.preventDefault(); say(typed); setTyped(""); }}>
                 <div className="pg-well"><input value={typed} onChange={(e) => setTyped(e.target.value)} placeholder="Type what the player says…" /></div>
                 <button type="submit" className="pg-chip">Say</button>
-              </form>
-              {ex.summary && ex.summary.rounds > 0 && (
-                <p className="pg-muted">Rows {ex.summary.rounds} · alone {ex.summary.restoredAlone} · with a choice {ex.summary.restoredWithChoice} · together {ex.summary.restoredTogether}</p>
+              </form></>)}
+              {viewEx.summary && viewEx.summary.rounds > 0 && (
+                <p className="pg-muted">Rows {viewEx.summary.rounds} · alone {viewEx.summary.restoredAlone} · with a choice {viewEx.summary.restoredWithChoice} · together {viewEx.summary.restoredTogether}</p>
               )}
             </>
           )}
@@ -210,8 +246,8 @@ export default function Playground() {
           <h2>Live feed</h2>
           <p className="pg-muted small">Placements count once the row is still for 2 s with no hand on the table. A wrong spot gets 4 s before any help, then a choice of two. Never &ldquo;wrong&rdquo;.</p>
           <ol>
-            {log.length === 0 && <li className="pg-muted">Nothing yet.</li>}
-            {log.map((l, i) => (
+            {viewLog.length === 0 && <li className="pg-muted">Nothing yet.</li>}
+            {viewLog.map((l, i) => (
               <li key={i} className={l.tone ?? ""}>
                 <small>{l.t}</small> <span className={`pg-who ${l.who}`}>{l.who}</span> {l.text}
               </li>

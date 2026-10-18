@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 from .config import settings
 from .games.shuffles import ROBOT_START
-from .voice.tools import GameState, run_tool, watch_table
+from .voice.tools import LIVE, GameState, log_feed, run_tool, watch_table
 
 router = APIRouter(prefix="/api/play", tags=["play"])
 SESSIONS: dict[str, GameState] = {}  # in memory; a playground session is short
@@ -45,7 +45,9 @@ async def start(body: StartIn) -> dict:
     state = GameState(mover=body.mover, objects=list(ROBOT_START), session_id=body.sessionId, patient_name="Playground")
     SESSIONS[body.sessionId] = state
     res = await run_tool(state, "start_game", {"game_id": "order_memory"}, None)
-    return {"result": res, "state": state.view()}
+    if res.get("say"):
+        log_feed(state, "agent", res["say"])
+    return {"result": res, "state": state.view(), "feed": state.feed}
 
 
 @router.post("/say")
@@ -60,6 +62,15 @@ async def watch(body: WatchIn) -> dict:
     state = _state(body.sessionId)
     out = await watch_table(state, body.reading)
     return {**out, "state": state.view()}
+
+
+@router.get("/live")
+async def live() -> dict:
+    """The running patient session (most recent), so the playground can follow the real game read-only."""
+    if not LIVE:
+        return {"active": False}
+    state = list(LIVE.values())[-1]
+    return {"active": True, "name": state.patient_name, "game": state.game, "state": state.view(), "feed": state.feed[-80:]}
 
 
 @router.post("/stop")

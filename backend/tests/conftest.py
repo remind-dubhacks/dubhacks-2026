@@ -26,3 +26,13 @@ def backboard_off(monkeypatch):
     monkeypatch.setattr(settings, "voice_transport", "")
     monkeypatch.setattr(settings, "backboard_api_key", "")
     monkeypatch.setattr(memory, "provision", no_provision)
+
+
+@pytest.fixture(autouse=True)
+def robot_is_ready(monkeypatch):
+    """Robot-mode tests assume the arm is ready; tests of the offline fallback override this."""
+    from app.voice import tools
+
+    async def ready(max_age_s: float = 15.0) -> bool:
+        return True
+    monkeypatch.setattr(tools, "robot_ready", ready)

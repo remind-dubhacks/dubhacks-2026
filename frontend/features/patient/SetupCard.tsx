@@ -15,10 +15,11 @@ const GAMES = [
   { id: "faces", label: "Famous faces", on: true, icon: "M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18Z M8.5 14.5c1 1.3 2.2 2 3.5 2s2.5-.7 3.5-2 M9 9.5h.01 M15 9.5h.01" },
   { id: "proverbs", label: "Sayings", on: true, icon: "M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-4.6A8 8 0 1 1 21 12Z" },
   { id: "sounds", label: "Sounds", on: true, icon: "M11 5 6 9H3v6h3l5 4V5Z M15.5 8.5a5 5 0 0 1 0 7 M18.5 5.5a9 9 0 0 1 0 13" },
-  { id: "order_memory", label: "Remember the Order (robot)", on: false, icon: "M7 4v16 M3 8l4-4 4 4 M17 20V4 M13 16l4 4 4-4" },
+  { id: "order_memory", label: "Remember the Order (robot)", on: true, icon: "M7 4v16 M3 8l4-4 4 4 M17 20V4 M13 16l4 4 4-4" },
 ];
-// The robot game can be picked only while the backend reports the robot arm ready.
-const ROBOT_GAMES = new Set(["order_memory"]);
+// The robot game is always available: with the arm ready the robot mixes the keyrings, otherwise a
+// caregiver does and the camera still follows the table (backend falls back on its own).
+const ROBOT_GAME = "order_memory";
 const SAVED = "remind.patient.setup";
 const GUEST = "guest";
 const NURSE_PASSWORD = "123";
@@ -90,8 +91,8 @@ export function SetupCard({ live, connecting, error, onStart, onEnd, onHide }: P
   const [testing, setTesting] = useState(false);
   const [robotReady, setRobotReady] = useState(false);
   const [robotChecked, setRobotChecked] = useState(false);
-  const available = (id: string) => !ROBOT_GAMES.has(id) || robotReady;
-  const [games, setGames] = useState<string[]>(GAMES.filter((g) => g.on && !ROBOT_GAMES.has(g.id)).map((g) => g.id));
+  const available = (_id: string) => true;
+  const [games, setGames] = useState<string[]>(GAMES.filter((g) => g.on).map((g) => g.id));
   useEffect(() => {
     let alive = true;
     const check = () => fetch(`${API}/api/health`).then((r) => r.json())
@@ -109,7 +110,8 @@ export function SetupCard({ live, connecting, error, onStart, onEnd, onHide }: P
     let saved: { name?: string; games?: string[]; participantId?: string; phone?: string } | null = null;
     try {
       saved = JSON.parse(localStorage.getItem(SAVED) ?? "null");
-      if (Array.isArray(saved?.games)) setGames(saved.games.filter(available));
+      // Older saved setups predate the robot game: switch it on once for them.
+      if (Array.isArray(saved?.games)) setGames(saved.games.includes(ROBOT_GAME) || (saved as { robotSeen?: boolean }).robotSeen ? saved.games : [...saved.games, ROBOT_GAME]);
       if (saved?.name && !saved.participantId) setName(saved.name);
       if (saved?.phone) setPhone(saved.phone);
     } catch { /* ignore */ }
@@ -130,7 +132,7 @@ export function SetupCard({ live, connecting, error, onStart, onEnd, onHide }: P
   function start(e: React.FormEvent) {
     e.preventDefault();
     const chosen = games.filter(available);
-    const saved = resident ? { games: chosen, participantId: resident._id, phone } : { games: chosen, name, phone };
+    const saved = resident ? { games: chosen, participantId: resident._id, phone, robotSeen: true } : { games: chosen, name, phone, robotSeen: true };
     try { localStorage.setItem(SAVED, JSON.stringify(saved)); } catch { /* ignore */ }
     onStart(resident ? "" : name.trim(), chosen, resident?._id, phone.trim());
   }
@@ -231,7 +233,7 @@ export function SetupCard({ live, connecting, error, onStart, onEnd, onHide }: P
         <div className="robot-row">
           <span className={`robot-dot ${robotReady ? "on" : robotChecked ? "off" : "wait"}`} aria-hidden="true" />
           <span className="field-note">
-            {robotReady ? "Robot arm ready: tap the robot game to include it." : robotChecked ? "Robot arm offline: the robot game is unavailable." : "Checking the robot arm…"}
+            {robotReady ? "Robot arm ready: it will mix the keyrings." : robotChecked ? "Robot arm offline: a caregiver mixes the keyrings; the camera still follows." : "Checking the robot arm…"}
           </span>
           <a className="test-text" href="/playground" target="_blank" rel="noreferrer">Open robot playground</a>
         </div>

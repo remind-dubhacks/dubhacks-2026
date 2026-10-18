@@ -78,6 +78,7 @@ class GameState:
     pending_say: list[str] = field(default_factory=list)  # said by the app when a robot move finishes
     overheat_alerted: bool = False
     objects: list[str] = field(default_factory=list)  # props for table games ("" = FIND_REMEMBER_OBJECTS)
+    feed: list[dict] = field(default_factory=list)  # live log for the playground: robot, camera and companion
     mover: str = ""  # who moves the objects in this session: robot | simulated | caregiver ("" = FIND_REMEMBER_MOVER)
 
     def view(self) -> dict:
@@ -106,6 +107,28 @@ class GameState:
 
 def mover_of(state: "GameState") -> str:
     return state.mover or FR_MOVER
+
+
+# Live patient sessions (voice/live.py registers them) so the playground can follow the real game.
+LIVE: dict[str, "GameState"] = {}
+_robot_ready = {"ok": False, "t": 0.0}
+
+
+def log_feed(state: "GameState", who: str, text: str = "", **data) -> None:
+    state.feed.append({"t": time.time(), "who": who, "text": text, **data})
+    del state.feed[:-120]
+
+
+async def robot_ready(max_age_s: float = 15.0) -> bool:
+    """Is the robot arm ready? Cached briefly: the worker's health check can take ~20 s in perceptron mode."""
+    if time.monotonic() - _robot_ready["t"] < max_age_s:
+        return _robot_ready["ok"]
+    try:
+        ok = bool((await robot_client.health()).get("ready"))
+    except Exception:  # noqa: BLE001
+        ok = False
+    _robot_ready.update(ok=ok, t=time.monotonic())
+    return ok
 
 
 ROBOT_STATUS = {
@@ -233,14 +256,15 @@ def _bg(coro) -> None:
     task.add_done_callback(lambda t: (_tasks.discard(t), t.exception() and _log.warning("alert send failed: %r", t.exception())))
 
 
-def _moves_note(step) -> str:
+def _moves_note(step, mover: str | None = None) -> str:
     """How the moves in a step get done, as words for the person/caregiver."""
+    mover = mover or FR_MOVER
     real = [m for m in step.moves if m.get("from")]
-    if not real or FR_MOVER == "simulated":
+    if not real or mover == "simulated":
         return ""
     pairs = {(m["object"], m["from"], m["to"]) for m in real[::2]}
     what = "; ".join(f"move the {o} from the {a} to the {b}" for o, a, b in pairs)
-    who = "Caregiver" if FR_MOVER == "caregiver" else "Robot (caregiver, if the robot skill isn't trained yet)"
+    who = "Caregiver" if mover == "caregiver" else "Robot (caregiver, if the robot skill isn't trained yet)"
     return f" ({who}: please {what}, slowly. Say 'moved' when done.)"
 
 
@@ -330,6 +354,7 @@ def _robot_task(state: GameState, sid: str, purpose: str) -> None:
     def on_event(e: dict) -> None:
         kind = e.get("kind")
         state.robot = {**state.robot, "last": kind}
+        log_feed(state, "robot", kind=kind)
         if kind in ROBOT_EVENT_SAY:
             state.pending_say.append(ROBOT_EVENT_SAY[kind])
 
@@ -340,6 +365,8 @@ def _robot_task(state: GameState, sid: str, purpose: str) -> None:
         except robot_client.RobotWorkerError as e:
             job = {"status": "failed", "errorCode": "worker_unreachable", "error": str(e)}
         ok = job["status"] in ("succeeded", "verifying")
+        log_feed(state, "robot", f"{purpose} {'finished' if ok else 'needs help'}", check=(job.get("check") or {}).get("verdict"),
+                 tone="ok" if ok else "warn")
         state.robot = {"status": "done" if ok else "failed", "purpose": purpose, "shuffle": sid,
                        "check": job.get("check"), "error": job.get("errorCode")}
         if not ok:
@@ -423,6 +450,7 @@ async def watch_table(state: GameState, reading: dict | None = None, now: float 
     if state.pending_say:
         say = " ".join(state.pending_say)
         state.pending_say.clear()
+        log_feed(state, "agent", say)
         return {"say": say, "events": [], "robot": state.robot}
     om = state.fr
     if not isinstance(om, OrderMemory) or om.phase != "restore" or state.watch is None or state.robot.get("status") == "moving":
@@ -431,10 +459,13 @@ async def watch_table(state: GameState, reading: dict | None = None, now: float 
     if reading is None:
         return {"say": None, "events": [], "camera": False}
     events = [e.to_dict() for e in state.watch.feed(reading, time.monotonic() if now is None else now)]
+    for e in events:
+        log_feed(state, "camera", event=e)
     step = om.live(events) if events else None
     if step is None:
         return {"say": None, "events": events}
     state.fr_step = step.to_dict()
+    log_feed(state, "agent", step.say)
     if om.phase != "restore":
         state.watch = None
         if step.phase == "done":
@@ -454,7 +485,7 @@ async def _om_advance(state: GameState, said: str, table_order: list[str] | None
             step.say, step.expect, step.phase = f"{step.say} {nxt.say}", nxt.expect, nxt.phase
             _start_watch(state)
         else:
-            step.say += _moves_note(step)
+            step.say += _moves_note(step, mover_of(state))
     elif phase == "shuffle":
         if state.robot.get("status") == "moving":
             return {"ok": True, "say": "The robot is still mixing them up. Hands on your lap for a moment.", "expect": "moved", "phase": "shuffle", "moves": []}
@@ -489,7 +520,11 @@ async def run_tool(state: GameState, name: str, args: dict, table_order: list[st
         if state.game not in ("find_remember", "order_memory") or state.fr is None or state.phase != "exercise":
             return {"ok": False, "error": "no memory activity is running"}
         if state.game == "order_memory":
-            return await _om_advance(state, str(args.get("said", "")), table_order)
+            log_feed(state, "player", str(args.get("said", "")))
+            res = await _om_advance(state, str(args.get("said", "")), table_order)
+            if res.get("say"):
+                log_feed(state, "agent", res["say"])
+            return res
         return _fr_advance(state, str(args.get("said", "")))
 
     if name == "list_games":
@@ -510,6 +545,9 @@ async def run_tool(state: GameState, name: str, args: dict, table_order: list[st
             if gid == "find_remember":
                 state.fr = FindRemember(objects=FR_OBJECTS)
             else:  # the robot's trained skill starts from one layout, so robot rounds start there
+                if mover_of(state) == "robot" and not await robot_ready():
+                    state.mover = "caregiver"  # robot offline: a caregiver moves the keyrings; the camera still follows
+                    log_feed(state, "robot", "offline: a caregiver will move the keyrings this time", tone="warn")
                 state.fr = OrderMemory(objects=state.objects or FR_OBJECTS, fixed_start=ROBOT_START if mover_of(state) == "robot" else None)
             state.watch, state.robot, state.pending_say = None, {}, []
             state.phase = "exercise"

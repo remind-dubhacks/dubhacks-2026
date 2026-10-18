@@ -51,3 +51,4 @@
 .pg-feed small { color: var(--ink-muted); }
 .pg-who { font-weight: 600; text-transform: capitalize; }
 @media (max-width: 560px) { .pg-head { flex-direction: column; } .pg-controls { margin-left: 0; } }
+.pg-live { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; margin-bottom: 16px; border: 2px solid #3d7457; }

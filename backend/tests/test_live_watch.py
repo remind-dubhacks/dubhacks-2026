@@ -427,3 +427,35 @@ def test_session_summary_is_plain_facts_without_a_score():
     assert "Remember the Order: 1 rows (1 alone" in text and "Famous faces" in text and "sister" in text
     assert "score" not in text.lower() and "%" not in text
     assert tools.session_summary(tools.GameState()) == ""
+
+
+def test_robot_offline_falls_back_to_a_caregiver_and_logs_it(monkeypatch):
+    async def offline(max_age_s=15.0):
+        return False
+
+    async def go():
+        monkeypatch.setattr(tools, "FR_MOVER", "robot")
+        monkeypatch.setattr(tools, "robot_ready", offline)
+        state = tools.GameState()
+        r = await tools.run_tool(state, "start_game", {"game_id": "order_memory"}, None)
+        assert r["ok"] and tools.mover_of(state) == "caregiver"
+        assert any(f["who"] == "robot" and "offline" in f["text"] for f in state.feed)
+        r = await tools.run_tool(state, "exercise_step", {"said": "lipstick"}, None)
+        assert "Caregiver: please move" in r["say"]
+
+    asyncio.run(go())
+
+
+def test_playground_can_follow_a_live_session():
+    from fastapi.testclient import TestClient
+
+    from app import main
+
+    state = tools.GameState(patient_name="Rose", session_id="live1")
+    tools.LIVE["live1"] = state
+    try:
+        with TestClient(main.app) as c:
+            d = c.get("/api/play/live").json()
+        assert d["active"] and d["name"] == "Rose"
+    finally:
+        tools.LIVE.pop("live1", None)
