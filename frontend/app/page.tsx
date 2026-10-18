@@ -14,6 +14,14 @@ export default function Home() {
           <h2>Participant</h2>
           <p className="small">Opened from the caregiver screen once a session is approved.</p>
         </Link>
+        <Link href="/play" className="card">
+          <h2>Play Reorder</h2>
+          <p className="small">Resident game screen: the robot shuffles, you put things back in order.</p>
+        </Link>
+        <Link href="/dashboard" className="card">
+          <h2>Dashboard</h2>
+          <p className="small">Residents, live session and alerts for the care team.</p>
+        </Link>
       </div>
     </main>
   );
