@@ -39,7 +39,7 @@ def test_build_setup_profile_and_pacing():
     vad = setup["realtimeInputConfig"]["automaticActivityDetection"]
     assert vad == {**VAD_PRESETS["default"], **SLOW_VAD} and vad["silenceDurationMs"] >= 2000
     prompt = setup["systemInstruction"]["parts"][0]["text"]
-    assert "Audrey Hepburn" in prompt and "Loves {braces}." in prompt and "remember_fact" in prompt
+    assert "Audrey Hepburn" in prompt and "Loves {braces}." in prompt
     plain = build_setup("Ann", ["faces"], vad="default")["setup"]
     assert plain["realtimeInputConfig"]["automaticActivityDetection"] == VAD_PRESETS["default"]
     assert "ABOUT" not in plain["systemInstruction"]["parts"][0]["text"]
@@ -79,15 +79,6 @@ async def test_recall_and_add(backboard):
     assert await memory.recall(None) == []
     assert await memory.add("a1", "Daughter is Linda.")
     assert backboard[-1][2] == {"content": "Daughter is Linda.", "metadata": {"kind": "fact"}}
-
-
-async def test_digest_session(backboard):
-    obs = [{"note": "Talked about Gregory Peck."}, {"note": ""}]
-    assert await memory.digest_session("a1", "Rose", obs)
-    method, path, body, _ = backboard[-1]
-    assert (method, path) == ("POST", "/api/threads/messages")
-    assert body["assistant_id"] == "a1" and body["memory"] == "Auto" and "Gregory Peck" in body["content"]
-    assert not await memory.digest_session("a1", "Rose", [{"note": ""}])
 
 
 async def test_ensure_assistant_creates_and_seeds(backboard):

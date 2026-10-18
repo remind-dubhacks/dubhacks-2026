@@ -1,26 +1,28 @@
-"""Gemini Live relay: continuous, interruptible speech-to-speech with tool calling.
+"""Live voice relay: continuous, interruptible speech-to-speech with tool calling.
 
-Browser <-> this server <-> Gemini Live (WebSocket). The server holds the API key and runs the tools;
-the model never touches the robot directly. Browser sends PCM16 mono 16 kHz; replies are PCM16
-(24 kHz unless the chunk's mime type says otherwise). Docs: https://ai.google.dev/gemini-api/docs/live
+Browser <-> this server <-> Backboard Realtime -> Gemini Live (or Gemini Live directly; see VOICE_TRANSPORT and
+voice/upstreams.py). The server holds the API keys and runs the tools; the model never touches the robot directly.
+Browser sends PCM16 mono 16 kHz; replies are PCM16 (24 kHz unless the provider says otherwise).
+Docs: https://ai.google.dev/gemini-api/docs/live, https://docs.backboard.io
+
+Long-term memory: through Backboard, each patient has their own assistant and memory="Auto" retrieves and saves
+facts by itself. Directly to Gemini, memories are read once into the prompt and nothing new is saved.
 """
 import asyncio
-import base64
 import json
 import logging
-import re
 import time
 import uuid
 from datetime import datetime, timezone
 
-import websockets
 from fastapi import WebSocket
 
 from ..config import settings
-from .agent import GEMINI_DECLS, STOP_RE
 from . import memory
+from .agent import GEMINI_DECLS, STOP_RE
 from .prompts.voice_system_prompt import VOICE_SYSTEM_PROMPT, render_profile
-from .tools import GAMES, GameState, run_tool
+from .tools import GAMES, TOOL_SCHEMAS, GameState, run_tool
+from .upstreams import BackboardUpstream, GeminiUpstream, context_message
 
 log = logging.getLogger("remind.live")
 
@@ -46,8 +48,16 @@ SLOW_VAD = {"silenceDurationMs": 2200, "prefixPaddingMs": 300}
 GAME_NAMES = {"faces": "famous faces", "proverbs": "sayings", "sounds": "sounds", "reorder": "the robot ordering game"}
 
 
+def transport() -> str:
+    """backboard | gemini. VOICE_TRANSPORT wins; otherwise Backboard whenever its key is set."""
+    t = settings.voice_transport.strip().lower()
+    if t in ("backboard", "gemini"):
+        return t
+    return "backboard" if settings.backboard_api_key else "gemini"
+
+
 def available() -> bool:
-    return bool(settings.gemini_api_key)
+    return bool(settings.backboard_api_key if transport() == "backboard" else settings.gemini_api_key)
 
 
 def needs_slow_pacing(profile: dict | None) -> bool:
@@ -55,12 +65,12 @@ def needs_slow_pacing(profile: dict | None) -> bool:
     return p.get("pace") == "slow" or bool({"stutter", "aphasia", "word_finding"} & set(p.get("speech", [])))
 
 
-def build_setup(name: str, games: list[str], *, prompt: str = VOICE_SYSTEM_PROMPT, vad: str | None = None,
-                temperature: float | None = None, max_output_tokens: int | None = None,
-                profile: dict | None = None, memories: list[str] | None = None) -> dict:
-    """The one setup message for every Live connection. None means "use settings"; a negative temperature
+def gemini_config(name: str, games: list[str], *, prompt: str = VOICE_SYSTEM_PROMPT, vad: str | None = None,
+                  temperature: float | None = None, max_output_tokens: int | None = None,
+                  profile: dict | None = None, memories: list[str] | None = None) -> dict:
+    """Native Gemini Live config shared by both transports. None means "use settings"; a negative temperature
     or a max_output_tokens of 0 leaves that field out (server default). `profile` (models.CareProfile) and
-    long-term `memories` add an ABOUT section to the prompt, and slow speakers get SLOW_VAD."""
+    `memories` add an ABOUT section to the prompt, and slow speakers get SLOW_VAD."""
     vad = vad or settings.gemini_live_vad
     if vad not in VAD_PRESETS:
         raise ValueError(f"unknown GEMINI_LIVE_VAD preset {vad!r}; expected one of {sorted(VAD_PRESETS)}")
@@ -74,21 +84,39 @@ def build_setup(name: str, games: list[str], *, prompt: str = VOICE_SYSTEM_PROMP
         gen["temperature"] = temperature
     if max_output_tokens > 0:
         gen["maxOutputTokens"] = max_output_tokens
-    return {"setup": {
-        "model": f"models/{settings.gemini_live_model}",
+    return {
         "generationConfig": gen,
         "systemInstruction": {"parts": [{"text": prompt.format(name=name, games=", ".join(GAME_NAMES[g] for g in games))
                                          + render_profile(name, profile, memories)}]},
-        "tools": [{"functionDeclarations": GEMINI_DECLS}],
         "realtimeInputConfig": {"automaticActivityDetection": {**VAD_PRESETS[vad], **(SLOW_VAD if needs_slow_pacing(profile) else {})}},
         "inputAudioTranscription": {},
         "outputAudioTranscription": {},
-    }}
+    }
+
+
+def build_setup(name: str, games: list[str], **kw) -> dict:
+    """Setup message for a direct Gemini Live connection (keyword arguments as gemini_config)."""
+    return {"setup": {"model": f"models/{settings.gemini_live_model}", **gemini_config(name, games, **kw),
+                      "tools": [{"functionDeclarations": GEMINI_DECLS}]}}
+
+
+def backboard_setup(name: str, games: list[str], *, assistant_id: str | None, memory_mode: str, **kw) -> dict:
+    """Backboard Realtime setup frame. The prompt goes in system_prompt; the rest of the Gemini config is passed
+    through untouched as provider_options. A new thread per session; memory lives on the patient's assistant."""
+    cfg = gemini_config(name, games, **kw)
+    frame = {
+        "provider": "google", "model": settings.backboard_realtime_model, "memory": memory_mode,
+        "system_prompt": cfg.pop("systemInstruction")["parts"][0]["text"],
+        "tools": TOOL_SCHEMAS, "provider_options": cfg,
+    }
+    if assistant_id:
+        frame["assistant_id"] = assistant_id
+    return frame
 
 
 def reminder_message() -> dict:
     """Adds the brevity reminder to context. turnComplete=False: the model should not reply to it."""
-    return {"clientContent": {"turns": [{"role": "user", "parts": [{"text": REMINDER}]}], "turnComplete": False}}
+    return context_message(REMINDER)
 
 
 def should_remind(user_turns: int, last_reminded_turn: int, recent_words: list[int]) -> bool:
@@ -98,10 +126,56 @@ def should_remind(user_turns: int, last_reminded_turn: int, recent_words: list[i
     return periodic or wordy
 
 
+async def open_upstream(ws: WebSocket, name: str, games: list[str], participant: dict):
+    """Pick the transport and build its setup. Backboard: make sure the patient has an assistant (one per patient,
+    created on their first session) and let memory="Auto" handle recall and saving. Gemini: read memories once."""
+    profile = participant.get("careProfile") or {}
+    assistant_id = participant.get("backboardAssistantId")
+    can_remember = participant.get("consentFlags", {}).get("rememberPreferences", False)
+    if transport() == "backboard":
+        if can_remember and not assistant_id:
+            assistant_id = await memory.ensure_assistant(ws.app.state.store, participant, with_seed=False)
+            if assistant_id:
+                background(memory.seed(assistant_id, profile))
+        mode = "off" if not assistant_id else "Auto" if can_remember else "Readonly"
+        return BackboardUpstream(backboard_setup(name, games, assistant_id=assistant_id, memory_mode=mode, profile=profile))
+    return await gemini_upstream(name, games, participant)
+
+
+async def gemini_upstream(name: str, games: list[str], participant: dict) -> GeminiUpstream:
+    profile = participant.get("careProfile") or {}
+    memories = await memory.recall(participant.get("backboardAssistantId"), " ".join(profile.get("interests", [])))
+    return GeminiUpstream(build_setup(name, games, profile=profile, memories=memories))
+
+
+async def connect_upstream(ws: WebSocket, name: str, games: list[str], participant: dict):
+    """Connected upstream, or None after telling the browser why. If Backboard refuses (e.g. no credits for
+    realtime audio) and a Gemini key is set, the session carries on directly with Gemini instead."""
+    up = await open_upstream(ws, name, games, participant)
+    try:
+        await up.connect()
+        return up
+    except Exception as e:  # noqa: BLE001
+        log.warning("could not reach %s: %r", up.label, e)
+        error = f"Could not reach {up.label}: {e}"[:300]
+    if isinstance(up, BackboardUpstream) and settings.gemini_api_key:
+        log.warning("falling back to Gemini Live directly (no new memories this session)")
+        up = await gemini_upstream(name, games, participant)
+        try:
+            await up.connect()
+            return up
+        except Exception as e:  # noqa: BLE001
+            error = f"Could not reach {up.label}: {type(e).__name__}"
+    await ws.send_json({"type": "error", "message": error})
+    await ws.close()
+    return None
+
+
 async def run(ws: WebSocket) -> None:
     await ws.accept()
     if not available():
-        await ws.send_json({"type": "error", "message": "GEMINI_API_KEY is not set on the backend"})
+        key = "BACKBOARD_API_KEY" if transport() == "backboard" else "GEMINI_API_KEY"
+        await ws.send_json({"type": "error", "message": f"{key} is not set on the backend"})
         await ws.close()
         return
 
@@ -110,11 +184,6 @@ async def run(ws: WebSocket) -> None:
     name = (ws.query_params.get("name") or profile.get("preferredName") or participant.get("alias") or "").strip()[:40] or "friend"
     games = [g for g in (ws.query_params.get("games") or "").split(",") if g in GAMES] or list(GAMES)
     state = GameState(patient_name=name, enabled_games=games)
-    assistant_id = participant.get("backboardAssistantId")
-    can_remember = participant.get("consentFlags", {}).get("rememberPreferences", False)
-    memories = await memory.recall(assistant_id, " ".join(profile.get("interests", [])))
-    if can_remember and not assistant_id and memory.enabled():  # first session: set up memory for next time
-        background(memory.ensure_assistant(ws.app.state.store, participant))
     nudge_after = SLOW_NUDGE_AFTER_S if needs_slow_pacing(profile) else NUDGE_AFTER_S
     started_at = datetime.now(timezone.utc)
     user_buf = ai_buf = ""
@@ -123,155 +192,137 @@ async def run(ws: WebSocket) -> None:
     nudges = 0
     user_turns = last_reminded_turn = 0
     recent_words: list[int] = []  # output word counts of recent model turns, for the brevity reminder
-    url = f"{settings.gemini_live_url}?key={settings.gemini_api_key}"
 
-    try:
-        gem = await websockets.connect(url, max_size=None)
-    except Exception as e:  # noqa: BLE001
-        await ws.send_json({"type": "error", "message": f"Could not reach Gemini Live: {type(e).__name__}"})
-        await ws.close()
+    up = await connect_upstream(ws, name, games, participant)
+    if up is None:
         return
 
-    async with gem:
-        async def to_gem(obj: dict) -> None:
-            await gem.send(json.dumps(obj))
+    async def tool(name: str, args: dict) -> dict:
+        res = await run_tool(state, name, args, None)
+        await ws.send_json({"type": "tool", "name": name, "args": args, "result": res, "state": state.view()})
+        return res
 
-        async def tool(name: str, args: dict) -> dict:
-            res = await run_tool(state, name, args, None)
-            aid = participant.get("backboardAssistantId")  # set mid-session on a first visit, by ensure_assistant
-            if name == "remember_fact" and res.get("ok") and can_remember and aid:
-                background(memory.add(aid, state.facts[-1]))  # never hold up the reply on Backboard
-            await ws.send_json({"type": "tool", "name": name, "args": args, "result": res, "state": state.view()})
-            return res
+    async def finalize_user() -> None:
+        nonlocal user_buf, user_turns
+        if user_buf.strip():
+            user_turns += 1
+            await ws.send_json({"type": "user_text", "text": user_buf.strip()})
+        user_buf = ""
 
-        async def finalize_user() -> None:
-            nonlocal user_buf, user_turns
-            if user_buf.strip():
-                user_turns += 1
-                await ws.send_json({"type": "user_text", "text": user_buf.strip()})
-            user_buf = ""
+    async def finish_ai() -> None:
+        nonlocal ai_buf, recent_words
+        if ai_buf.strip():
+            await ws.send_json({"type": "ai_done", "text": ai_buf.strip()})
+            recent_words = (recent_words + [len(ai_buf.split())])[-2:]
+        ai_buf = ""
 
-        async def hard_stop(say_goodbye: bool = True) -> None:
-            nonlocal stopped, nudges
-            if stopped:
+    async def hard_stop(say_goodbye: bool = True) -> None:
+        nonlocal stopped, nudges
+        if stopped:
+            return
+        stopped = True
+        nudges = MAX_NUDGES  # no nudging after a stop until the person speaks again
+        await tool("stop", {})
+        await ws.send_json({"type": "interrupt"})
+        if say_goodbye:
+            await up.say(GOODBYE)
+
+    async def from_browser() -> None:
+        nonlocal last_activity
+        while True:
+            msg = await ws.receive()
+            if msg["type"] == "websocket.disconnect":
                 return
-            stopped = True
-            nudges = MAX_NUDGES  # no nudging after a stop until the person speaks again
-            await tool("stop", {})
-            await ws.send_json({"type": "interrupt"})
-            if say_goodbye:
-                await to_gem({"realtimeInput": {"text": GOODBYE}})
+            if msg.get("bytes"):
+                await up.send_audio(msg["bytes"])
+            elif msg.get("text"):
+                data = json.loads(msg["text"])
+                if data.get("type") == "stop":
+                    await hard_stop()
+                elif data.get("type") == "text" and data.get("text", "").strip():  # typed input or page events
+                    last_activity = time.monotonic()
+                    await up.say(data["text"])
 
-        await to_gem(build_setup(name, games, profile=profile, memories=memories))
+    async def nudger() -> None:
+        """The model only speaks when spoken to; after a long silence, prompt it to carry the conversation on."""
+        nonlocal last_activity, nudges
+        while True:
+            await asyncio.sleep(1)
+            if nudges >= MAX_NUDGES or time.monotonic() - last_activity < nudge_after:
+                continue
+            last_activity = time.monotonic()
+            nudges += 1
+            if nudges < MAX_NUDGES:
+                await up.say(NUDGE)
+            else:  # no reply to repeated nudges: note it, rest the screen, wait for the person
+                await tool("note_response", {"engagement": "withdrawn", "note": "No reply to several gentle prompts."})
+                await tool("end_game", {})
 
-        async def from_browser() -> None:
-            nonlocal last_activity
-            while True:
-                msg = await ws.receive()
-                if msg["type"] == "websocket.disconnect":
-                    return
-                if msg.get("bytes"):
-                    await to_gem({"realtimeInput": {"audio": {"data": base64.b64encode(msg["bytes"]).decode(), "mimeType": "audio/pcm;rate=16000"}}})
-                elif msg.get("text"):
-                    data = json.loads(msg["text"])
-                    if data.get("type") == "stop":
-                        await hard_stop()
-                    elif data.get("type") == "text" and data.get("text", "").strip():  # typed input or page events
-                        last_activity = time.monotonic()
-                        await to_gem({"realtimeInput": {"text": data["text"]}})
-
-        async def nudger() -> None:
-            """Gemini only speaks when spoken to; after a long silence, prompt it to carry the conversation on."""
-            nonlocal last_activity, nudges
-            while True:
-                await asyncio.sleep(1)
-                if nudges >= MAX_NUDGES or time.monotonic() - last_activity < nudge_after:
-                    continue
-                last_activity = time.monotonic()
-                nudges += 1
-                if nudges < MAX_NUDGES:
-                    await to_gem({"realtimeInput": {"text": NUDGE}})
-                else:  # no reply to repeated nudges: note it, rest the screen, wait for the person
-                    await tool("note_response", {"engagement": "withdrawn", "note": "No reply to several gentle prompts."})
-                    await tool("end_game", {})
-
-        async def from_gem() -> None:
-            nonlocal user_buf, ai_buf, stopped, last_activity, nudges, recent_words, last_reminded_turn
-            greeted = False
-            async for raw in gem:
-                ev = json.loads(raw.decode() if isinstance(raw, bytes) else raw)
-                last_activity = time.monotonic()
-                if "setupComplete" in ev and not greeted:
+    async def from_model() -> None:
+        nonlocal user_buf, ai_buf, stopped, last_activity, nudges, recent_words, last_reminded_turn
+        greeted = False
+        async for ev in up.events():
+            last_activity = time.monotonic()
+            if ev.kind == "ready":
+                if not greeted:
                     greeted = True
                     interests = profile.get("interests") or []
                     extra = GREETING_INTEREST.format(interest=interests[0]) if interests else ""
-                    await to_gem({"realtimeInput": {"text": GREETING.format(name=name, extra=extra)}})
-                    continue
+                    await up.say(GREETING.format(name=name, extra=extra))
+            elif ev.kind == "tool_calls":
+                await finalize_user()
+                await up.send_tool_results([(c, await tool(c["name"], c["args"])) for c in ev.calls])
+            elif ev.kind == "user_text":
+                user_buf += ev.text
+                nudges = 0
+                await ws.send_json({"type": "user_partial", "text": user_buf})
+                if not stopped and STOP_RE.search(user_buf):  # deterministic stop, independent of the model
+                    await hard_stop()
+            elif ev.kind == "ai_text":
+                await finalize_user()
+                ai_buf += ev.text
+                await ws.send_json({"type": "ai_delta", "text": ev.text})
+            elif ev.kind == "audio":
+                await finalize_user()
+                await ws.send_json({"type": "audio", "delta": ev.data, "rate": ev.rate})
+            elif ev.kind == "interrupted":
+                await ws.send_json({"type": "interrupt"})
+                await finish_ai()
+            elif ev.kind == "turn_done":
+                await finish_ai()
+                stopped = False  # ready for the next stop request
+                if should_remind(user_turns, last_reminded_turn, recent_words):
+                    last_reminded_turn, recent_words = user_turns, []
+                    await up.add_context(REMINDER)
+            elif ev.kind == "error":
+                await ws.send_json({"type": "error", "message": ev.text})
 
-                if "toolCall" in ev:
-                    await finalize_user()
-                    responses = []
-                    for fc in ev["toolCall"].get("functionCalls", []):
-                        res = await tool(fc["name"], fc.get("args") or {})
-                        responses.append({"id": fc.get("id"), "name": fc["name"], "response": {"result": res}})
-                    await to_gem({"toolResponse": {"functionResponses": responses}})
-                    continue
+    tasks = [asyncio.create_task(from_browser()), asyncio.create_task(from_model()), asyncio.create_task(nudger())]
+    try:
+        done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        for d in done:
+            if d.exception():
+                log.warning("live session ended: %r", d.exception())
+    finally:
+        for t in tasks:
+            t.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)  # the reader must be gone before close() reads
+        await save_record(ws, state, started_at, participant.get("_id"))
+        background(close_quietly(up))  # Backboard's stop handshake (memory save) can take a moment; don't hold the handler
 
-                sc = ev.get("serverContent")
-                if not sc:
-                    if "error" in ev:
-                        await ws.send_json({"type": "error", "message": json.dumps(ev["error"])[:300]})
-                    continue
 
-                if "inputTranscription" in sc:
-                    user_buf += sc["inputTranscription"].get("text", "")
-                    nudges = 0
-                    await ws.send_json({"type": "user_partial", "text": user_buf})
-                    if not stopped and STOP_RE.search(user_buf):  # deterministic stop, independent of the model
-                        await hard_stop()
-                if "outputTranscription" in sc:
-                    await finalize_user()
-                    t = sc["outputTranscription"].get("text", "")
-                    ai_buf += t
-                    await ws.send_json({"type": "ai_delta", "text": t})
-                for part in (sc.get("modelTurn") or {}).get("parts", []):
-                    inline = part.get("inlineData")
-                    if inline and inline.get("data"):
-                        await finalize_user()
-                        m = re.search(r"rate=(\d+)", inline.get("mimeType", ""))
-                        await ws.send_json({"type": "audio", "delta": inline["data"], "rate": int(m.group(1)) if m else 24000})
-                if sc.get("interrupted"):
-                    await ws.send_json({"type": "interrupt"})
-                if sc.get("interrupted") or sc.get("turnComplete"):
-                    if ai_buf.strip():
-                        await ws.send_json({"type": "ai_done", "text": ai_buf.strip()})
-                        recent_words = (recent_words + [len(ai_buf.split())])[-2:]
-                    ai_buf = ""
-                    if sc.get("turnComplete"):
-                        stopped = False  # ready for the next stop request
-                        if should_remind(user_turns, last_reminded_turn, recent_words):
-                            last_reminded_turn, recent_words = user_turns, []
-                            await to_gem(reminder_message())
-
-        tasks = [asyncio.create_task(from_browser()), asyncio.create_task(from_gem()), asyncio.create_task(nudger())]
-        try:
-            done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-            for d in done:
-                if d.exception():
-                    log.warning("live session ended: %r", d.exception())
-        finally:
-            for t in tasks:
-                t.cancel()
-            await save_record(ws, state, started_at, participant.get("_id"))
-            if can_remember and participant.get("backboardAssistantId") and state.observations:
-                background(memory.digest_session(participant["backboardAssistantId"], name, state.observations))
+async def close_quietly(up) -> None:
+    try:
+        await up.close()
+    except Exception as e:  # noqa: BLE001
+        log.warning("closing %s: %r", up.label, e)
 
 
 _background: set[asyncio.Task] = set()
 
 
 def background(coro) -> None:
-    """Fire-and-forget (memory writes), keeping a reference so the task is not garbage-collected mid-flight."""
+    """Fire-and-forget (memory seeding), keeping a reference so the task is not garbage-collected mid-flight."""
     task = asyncio.create_task(coro)
     _background.add(task)
     task.add_done_callback(_background.discard)
@@ -290,7 +341,7 @@ async def load_participant(ws: WebSocket) -> dict:
 
 
 async def save_record(ws: WebSocket, state: GameState, started_at: datetime, participant_id: str | None = None) -> None:
-    """Session summary for the nurse screen. No raw transcripts are kept."""
+    """Session summary for the nurse screen. We keep no raw transcripts (Backboard keeps its own thread history)."""
     store = getattr(ws.app.state, "store", None)
     if store is None:
         return

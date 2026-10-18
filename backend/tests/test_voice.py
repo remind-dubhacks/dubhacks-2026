@@ -65,4 +65,4 @@ def test_tool_catalog():
     with TestClient(main.app) as c:
         names = [t["name"] for t in c.get("/api/voice/tools").json()]
     assert names == ["list_games", "start_game", "check_arrangement", "alert_caregiver", "stop",
-                     "next_item", "reveal", "play_sound", "show_message", "end_game", "note_response", "remember_fact"]
+                     "next_item", "reveal", "play_sound", "show_message", "end_game", "note_response"]

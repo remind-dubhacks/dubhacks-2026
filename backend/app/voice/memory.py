@@ -2,6 +2,10 @@
 because memories are scoped to an assistant. The care profile (models.CareProfile) stays in our store; Backboard
 holds what grows over time: stories, people, favourites, what engaged them.
 
+During a call, Backboard Realtime (voice/upstreams.py, memory="Auto") retrieves and saves memories itself. This
+module only manages assistants, seeds them from the care profile, and reads memories for the nurse and for the
+direct-Gemini fallback.
+
 Best effort throughout: with no BACKBOARD_API_KEY, or on a timeout or HTTP error, calls log and return an empty
 result, so a session never fails or waits longer than BACKBOARD_TIMEOUT_S because of memory."""
 import logging
@@ -70,23 +74,19 @@ async def list_all(assistant_id: str) -> list[dict]:
     return [{"id": m["id"], "content": m["content"]} for m in (res or {}).get("memories", [])]
 
 
-async def digest_session(assistant_id: str, patient: str, observations: list[dict]) -> bool:
-    """Hand the session's nurse notes to Backboard with memory=Auto: it extracts, merges and de-duplicates the facts.
-    (remember_fact facts are already saved directly, during the session.)"""
-    lines = [f"- {o['note']}" for o in observations if o.get("note")]
-    if not lines:
-        return False
-    content = f"Notes from today's companion session with {patient}:\n" + "\n".join(lines)
-    return await _call("POST", "/threads/messages", json={"assistant_id": assistant_id, "content": content, "memory": "Auto", "stream": False}) is not None
-
-
 def profile_memories(profile: dict) -> list[str]:
     """Care-sheet lines worth seeding as memories, so search can surface them alongside what is learnt later."""
     return [*profile.get("lifeStory", []), *(f"Enjoys talking about {i}." for i in profile.get("interests", []))]
 
 
-async def ensure_assistant(store, participant: dict) -> str | None:
-    """The participant's assistant id, creating and seeding it on first use (stored on the participant)."""
+async def seed(assistant_id: str, profile: dict) -> None:
+    for line in profile_memories(profile):
+        await add(assistant_id, line, kind="care_profile")
+
+
+async def ensure_assistant(store, participant: dict, with_seed: bool = True) -> str | None:
+    """The participant's assistant id, creating it on first use (stored on the participant). With with_seed=False
+    the caller seeds it (live.py does so in the background, so a first session does not wait for it)."""
     if participant.get("backboardAssistantId") or not enabled():
         return participant.get("backboardAssistantId")
     aid = await create_assistant(participant.get("alias", "resident"))
@@ -94,6 +94,6 @@ async def ensure_assistant(store, participant: dict) -> str | None:
         return None
     participant["backboardAssistantId"] = aid
     await store.update("participants", participant["_id"], {"backboardAssistantId": aid})
-    for line in profile_memories(participant.get("careProfile") or {}):
-        await add(aid, line, kind="care_profile")
+    if with_seed:
+        await seed(aid, participant.get("careProfile") or {})
     return aid

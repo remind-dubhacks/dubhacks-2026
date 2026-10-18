@@ -29,10 +29,14 @@ class Settings:
     elevenlabs_api_key: str = os.getenv("ELEVENLABS_API_KEY", "")
     elevenlabs_voice_id: str = os.getenv("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")  # any voice in your library
     elevenlabs_model: str = os.getenv("ELEVENLABS_MODEL", "eleven_flash_v2_5")
-    # Long-term patient memory (voice/memory.py). Unset key = memory off; sessions still run from the care profile.
+    # Backboard: the voice call goes through Backboard Realtime, which keeps long-term patient memory (voice/upstreams.py,
+    # voice/memory.py). Unset key = direct Gemini Live with no memory writes; sessions still use the care profile.
     backboard_api_key: str = os.getenv("BACKBOARD_API_KEY", "")
     backboard_url: str = os.getenv("BACKBOARD_URL", "https://app.backboard.io/api")
+    backboard_realtime_url: str = os.getenv("BACKBOARD_REALTIME_URL", "wss://app.backboard.io/api/threads/realtime")
+    backboard_realtime_model: str = os.getenv("BACKBOARD_REALTIME_MODEL", os.getenv("GEMINI_LIVE_MODEL", "gemini-3.8-live"))
     backboard_timeout_s: float = float(os.getenv("BACKBOARD_TIMEOUT_S", "3.0"))  # session start waits at most this long
+    voice_transport: str = os.getenv("VOICE_TRANSPORT", "")  # backboard | gemini; empty = backboard when its key is set
 
 
 settings = Settings()
