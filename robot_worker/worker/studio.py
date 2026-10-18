@@ -31,6 +31,7 @@ PERCEPTRON = os.getenv("PERCEPTRON_BASE_URL", "https://robotics.perceptron.inc")
 
 router = APIRouter(prefix="/studio")
 
+from . import voice  # noqa: E402
 from .liveview import LiveView, display_args  # noqa: E402
 
 
@@ -52,15 +53,30 @@ class Proc:
         self.exit_code: int | None = None
         self.stopped_by_user = False
         self.lock = threading.Lock()
+        self.plan = {"episodes": 0, "episode_s": 0, "reset_s": 0}
+        self._timers: list[threading.Timer] = []
 
     @property
     def running(self) -> bool:
         return self.p is not None and self.p.poll() is None
 
+    def _after(self, seconds: float, text: str) -> None:
+        if seconds > 0:
+            t = threading.Timer(seconds, voice.speak, args=(text,))
+            t.daemon = True
+            t.start()
+            self._timers.append(t)
+
+    def _clear_timers(self) -> None:
+        for t in self._timers:
+            t.cancel()
+        self._timers = []
+
     def log(self, line: str) -> None:
         with self.lock:
             self.seq += 1
             self.logs.append((self.seq, line))
+        before = (self.phase, self.episode)
         if m := re.search(r"Recording episode (\d+)", line):
             self.episode, self.phase = int(m.group(1)), "recording"
         elif "Reset the environment" in line:
@@ -69,6 +85,24 @@ class Proc:
             self.phase = "re-record"
         elif "Stop recording" in line or "Exiting" in line:
             self.phase = "finishing"
+        if self.kind == "record" and (self.phase, self.episode) != before:
+            self._narrate()
+
+    def _narrate(self) -> None:
+        """Spoken prompts for the operator (Mac voice), timed from LeRobot's own phase lines."""
+        self._clear_timers()
+        n, total = (self.episode or 0) + 1, self.plan["episodes"] or "?"
+        if self.phase == "recording":
+            voice.speak(f"Episode {n} of {total}. Go.")
+            self._after(self.plan["episode_s"] - 5, "Five seconds.")
+        elif self.phase == "reset":
+            left = (self.plan["episodes"] or n) - n
+            voice.speak(f"Reset the objects. {left} to go." if left > 0 else "Reset the objects. Last one done.")
+            self._after(self.plan["reset_s"] - 3, "Get ready.")
+        elif self.phase == "re-record":
+            voice.speak("Redo that one.")
+        elif self.phase == "finishing":
+            voice.speak("Saving.")
 
     def start(self, kind: str, cmd: list[str]) -> None:
         if self.running:
@@ -78,6 +112,8 @@ class Proc:
             raise HTTPException(500, f"{cmd[0]} not found; run `uv sync --extra hardware`")
         self.kind, self.cmd, self.started, self.episode, self.phase, self.exit_code = kind, cmd, time.time(), None, None, None
         self.stopped_by_user = False
+        arg = lambda k: next((int(a.split("=", 1)[1]) for a in cmd if a.startswith(f"--dataset.{k}=")), 0)  # noqa: E731
+        self.plan = {"episodes": arg("num_episodes"), "episode_s": arg("episode_time_s"), "reset_s": arg("reset_time_s")}
         self.log(f"$ {' '.join(cmd)}")
         self.p = subprocess.Popen(
             [exe, *cmd[1:]],
@@ -99,6 +135,7 @@ class Proc:
         self.exit_code = self.p.wait()
         self.log(f"[{self.kind} exited with code {self.exit_code}]")
         self.phase = "done"
+        self._clear_timers()
 
     def stop(self) -> None:
         if not self.running:
@@ -270,6 +307,7 @@ def status() -> dict:
         "cameras": {"side": int(env("SIDE_CAMERA_INDEX", "0")), "wrist": int(env("WRIST_CAMERA_INDEX", "1"))},
         "perceptron": {"configured": bool(env("PERCEPTRON_API_KEY"))},
         "live": live.status(),
+        "serverVoice": voice.ENABLED,
         "hfUser": env("HF_USER"),
     }
 

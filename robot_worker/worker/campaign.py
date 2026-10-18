@@ -116,6 +116,10 @@ class Campaign:
     # ---------- status
 
     def say(self, message: str, state: str | None = None) -> None:
+        from .voice import speak
+
+        if message != "Recording.":  # episode prompts are spoken separately
+            speak(message, interrupt=state in ("paused", "error"))
         with self.lock:
             if state:
                 self.state = state
@@ -218,7 +222,7 @@ class Campaign:
         # 1. Setup prompt + vision check
         self.ready.clear()
         self.skip_check.clear()
-        self.say(f"Batch {k + 1}: {n} episodes. {variation.rstrip('. ')}. Say ready.", "setup")
+        self.say(f"Batch {k + 1}: {n} episodes. {variation.rstrip('. ')}. Press Ready when set.", "setup")
         if self.config.visionCheck:
             self._vision_check(t)
         while not self.ready.wait(0.3):
