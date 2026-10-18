@@ -353,8 +353,8 @@ class ScriptedExecutor:
                     self.say(" ".join(p["say"] for p in problems))
                     raise RobotError("keyring_off_spot", " ".join(p["sayVi"] for p in problems))
 
-        def move(pose: dict) -> None:
-            self.robot.move_to(pose, stop, self.SPEED)
+        def move(pose: dict, slow: bool = False) -> None:
+            self.robot.move_to(pose, stop, self.SPEED * (0.6 if slow else 1.0))
 
         def grip(v: float, wait: float) -> None:
             self.robot.gripper(v, stop)
@@ -375,27 +375,32 @@ class ScriptedExecutor:
                     self.corrections.append({"slot": a, "object": obj, "x": round(found[obj][0], 3), "panDeg": round(corr, 2)})
             above = {**poses[f"above_s{a}"], "shoulder_pan.pos": poses[f"above_s{a}"]["shoulder_pan.pos"] + corr}
             down = {**poses[f"down_s{a}"], "shoulder_pan.pos": poses[f"down_s{a}"]["shoulder_pan.pos"] + corr}
+            # The purple switch block is wider and slicker: squeeze it harder and carry it slower.
+            close = 6.0 if obj == "purple" else GRIP_CLOSE
+            heavy = obj == "purple"
             move(above)
             move(down)
-            grip(GRIP_CLOSE, 0.4)
+            grip(close, 0.5)
             if not self._holding():
                 # Missed: open, try once more from the same spot, then stop before placing so a
                 # missed keyring is never knocked by the next move.
                 grip(GRIP_OPEN, 0.3)
-                grip(GRIP_CLOSE, 0.4)
+                grip(close, 0.5)
                 if not self._holding():
                     grip(GRIP_OPEN, 0.3)
                     move(above)
                     move(poses["home"])
                     raise RobotError("grasp_missed", f"could not pick the {obj} from slot {a} (gripper read {getattr(self, '_last_grip', '?')}, holding needs >= 15.5)")
-            move(above)
+            move(above, heavy)
             # Travel high: a straight joint-space move between two low "above" poses dips toward the
             # table mid-way and knocked keyrings over in the first arm tests.
-            move(poses["home"])
+            move(poses["home"], heavy)
+            move(poses[f"above_s{b}"], heavy)
+            move(poses[f"down_s{b}"], heavy)
+            # Let go gently: open a little, settle, lift, then open fully.
+            grip(26.0, 0.5)
             move(poses[f"above_s{b}"])
-            move(poses[f"down_s{b}"])
-            grip(GRIP_OPEN, 0.3)
-            move(poses[f"above_s{b}"])
+            grip(GRIP_OPEN, 0.2)
             move(poses["home"])
             row[b - 1], row[a - 1] = obj, None
         move(poses["home"])
