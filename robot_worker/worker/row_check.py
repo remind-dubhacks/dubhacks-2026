@@ -25,13 +25,22 @@ MIN_AREA = 250  # pixels at 640 px wide
 MIRRORED = os.getenv("SIDE_CAMERA_MIRRORED", "1") == "1"
 
 
+def find_xy(frame_bgr: np.ndarray) -> dict[str, tuple[float, float]]:
+    """object -> (x, y) of its centre as 0-1 fractions of the frame (y grows toward the camera)."""
+    return {k: (v[0], v[2]) for k, v in _find(frame_bgr).items()}
+
+
 def find(frame_bgr: np.ndarray) -> dict[str, tuple[float, int]]:
+    return {k: (v[0], v[1]) for k, v in _find(frame_bgr).items()}
+
+
+def _find(frame_bgr: np.ndarray) -> dict[str, tuple[float, int, float]]:
     """object -> (x center as a 0-1 fraction of width, area in px) for each object found."""
     h, w = frame_bgr.shape[:2]
     img = cv2.resize(frame_bgr, (640, int(h * 640 / w))) if w != 640 else frame_bgr
     hsv = cv2.cvtColor(cv2.GaussianBlur(img, (5, 5), 0), cv2.COLOR_BGR2HSV)
     k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-    out: dict[str, tuple[float, int]] = {}
+    out: dict[str, tuple[float, int, float]] = {}
     for name, ranges in RANGES.items():
         m = np.zeros(hsv.shape[:2], np.uint8)
         for lo, hi in ranges:
@@ -44,7 +53,7 @@ def find(frame_bgr: np.ndarray) -> dict[str, tuple[float, int]]:
         best = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
         area = int(stats[best, cv2.CC_STAT_AREA])
         if area >= MIN_AREA:
-            out[name] = (float(cents[best][0]) / 640, area)
+            out[name] = (float(cents[best][0]) / 640, area, float(cents[best][1]) / img.shape[0])
     return out
 
 

@@ -312,9 +312,9 @@ class ScriptedExecutor:
         """Pick-and-place through taught poses. With the camera calibrated: check the row first,
         and line up each pick with where the keyring really is."""
         from .robot import GRIPPER, load_poses
-        from .row_check import find, read_row
+        from .row_check import find, find_xy, read_row
         from .shuffle_math import GRIP_CLOSE, GRIP_OPEN, SHUFFLES
-        from .slot_locate import fit, load_calibration, pan_correction
+        from .slot_locate import fit, load_calibration, load_spots, pan_correction, spot_problems
 
         data = load_poses()
         # Taught poses carry whatever the gripper was doing while teaching; the script opens and
@@ -338,6 +338,13 @@ class ScriptedExecutor:
             seen = read_row(frame)["order"] if frame is not None else None
             if seen and all(seen) and seen != start:
                 raise RobotError("start_mismatch", f"table shows {seen}, expected {start}; set the row first")
+            spots = load_spots(data)
+            if frame is not None and spots:
+                problems = spot_problems(find_xy(frame), start + [None], spots)
+                if problems:
+                    self.last_check = {"spots": problems}
+                    self.say(" ".join(p["say"] for p in problems))
+                    raise RobotError("keyring_off_spot", " ".join(p["sayVi"] for p in problems))
 
         def move(pose: dict) -> None:
             self.robot.move_to(pose, stop, self.SPEED)

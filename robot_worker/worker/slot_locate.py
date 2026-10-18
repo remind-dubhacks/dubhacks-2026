@@ -47,3 +47,43 @@ def pan_correction(x_seen: float, slot: int, ref_x: dict[int, float], slope: flo
 
 def load_calibration(poses_data: dict) -> dict[int, float]:
     return {int(k): float(v) for k, v in (poses_data.get("camera_x") or {}).items()}
+
+
+# ---------------------------------------------------------------- is each keyring on its spot?
+
+TOL_X = float(os.getenv("SPOT_TOL_X", "0.03"))  # share of the image width (~1 cm on the table)
+TOL_Y = float(os.getenv("SPOT_TOL_Y", "0.05"))
+NAMES_VI = {"black": "đen", "white": "trắng", "purple": "tím"}
+
+
+def spot_problems(found_xy: dict[str, tuple[float, float]], row: list[str | None],
+                  ref_xy: dict[int, tuple[float, float]]) -> list[dict]:
+    """Keyrings that sit too far from the spot the robot grabs at, with a plain hint which way to
+    nudge them. Slot 1 is the left end; the camera faces the robot, so the image is mirrored and
+    things lower in the image are further from the robot."""
+    out = []
+    for slot, obj in enumerate(row[:3], 1):
+        if obj is None or slot not in ref_xy or obj not in found_xy:
+            continue
+        x, y = found_xy[obj]
+        rx, ry = ref_xy[slot]
+        dx, dy = x - rx, y - ry
+        if abs(dx) <= TOL_X and abs(dy) <= TOL_Y:
+            continue
+        hint_en, hint_vi = [], []
+        if dx > TOL_X:
+            hint_en.append("toward the right end"); hint_vi.append("sang phải (về phía ô 4)")
+        elif dx < -TOL_X:
+            hint_en.append("toward the left end"); hint_vi.append("sang trái (về phía ô 1)")
+        if dy > TOL_Y:
+            hint_en.append("closer to the robot"); hint_vi.append("lại gần robot")
+        elif dy < -TOL_Y:
+            hint_en.append("a little away from the robot"); hint_vi.append("ra xa robot một chút")
+        out.append({"slot": slot, "object": obj, "dx": round(dx, 3), "dy": round(dy, 3),
+                    "say": f"Please move the {obj} keyring a little " + " and ".join(hint_en) + ".",
+                    "sayVi": f"Đẩy móc khóa {NAMES_VI.get(obj, obj)} " + " và ".join(hint_vi) + "."})
+    return out
+
+
+def load_spots(poses_data: dict) -> dict[int, tuple[float, float]]:
+    return {int(k): (float(v[0]), float(v[1])) for k, v in (poses_data.get("camera_xy") or {}).items()}

@@ -658,3 +658,21 @@ def test_twice_missed_pick_stops_before_placing(monkeypatch):
     assert e.value.code == "grasp_missed" and "slot 1" in str(e.value)
     moved_to = [t for k, t in ex.robot.path if k == "move"]
     assert all(t.get("shoulder_pan.pos") != float(SCRIPT_POSES.index("down_s4")) for t in moved_to)  # never went to place
+
+
+# ---------------------------------------------------------------- keyring on its spot (no tape)
+
+
+def test_spot_check_names_the_keyring_and_the_direction():
+    ref = {1: (0.757, 0.30), 2: (0.438, 0.30), 3: (0.104, 0.40)}
+    ok = slot_locate.spot_problems({"black": (0.75, 0.31), "white": (0.44, 0.29), "purple": (0.10, 0.41)}, ["black", "white", "purple", None], ref)
+    assert ok == []
+    bad = slot_locate.spot_problems({"black": (0.69, 0.36), "white": (0.44, 0.29), "purple": (0.10, 0.41)}, ["black", "white", "purple", None], ref)
+    assert len(bad) == 1 and bad[0]["object"] == "black"
+    assert "sang trái" in bad[0]["sayVi"] and "lại gần robot" in bad[0]["sayVi"]
+
+
+def test_find_xy_on_a_real_frame():
+    xy = __import__("worker.row_check", fromlist=["find_xy"]).find_xy(cv2.imread(str(FIX / "ep00_start.jpg")))
+    assert set(xy) == {"black", "white", "purple"}
+    assert all(0 <= v <= 1 for p in xy.values() for v in p)

@@ -223,7 +223,7 @@ def calibrate_slots(body: CalibrateIn) -> dict:
     """With the row in its start layout, save where slots 1-3 appear in the side camera.
     The scripted shuffles use it to line up each pick with where the keyring really is."""
     from .robot import load_poses, save_poses
-    from .row_check import find, read_row
+    from .row_check import find, find_xy, read_row
 
     frame, source = side_frame()
     if frame is None:
@@ -233,7 +233,10 @@ def calibrate_slots(body: CalibrateIn) -> dict:
         raise HTTPException(409, f"camera sees {row['seen']} (order {row['order']}); set the row to {body.start} first")
     found = find(frame)
     cal = {str(i + 1): round(found[o][0], 4) for i, o in enumerate(body.start)}
+    xy = find_xy(frame)
+    spots = {str(i + 1): [round(xy[o][0], 4), round(xy[o][1], 4)] for i, o in enumerate(body.start)}
     data = load_poses()
     data["camera_x"] = cal
+    data["camera_xy"] = spots
     save_poses(data)
-    return {"camera_x": cal, "source": source}
+    return {"camera_x": cal, "camera_xy": spots, "source": source}
