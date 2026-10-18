@@ -14,12 +14,15 @@ SESSIONS: dict[str, tuple[GameState, list[dict]]] = {}  # prototype: in-memory o
 class TurnIn(BaseModel):
     sessionId: str
     text: str
+    system: bool = False  # a system note (e.g. "the robot finished"), not something the resident said
     tableOrder: list[str] | None = None  # prototype: what the demo table / camera currently shows
 
 
 @router.post("/turn")
 async def voice_turn(body: TurnIn) -> dict:
     state, history = SESSIONS.setdefault(body.sessionId, (GameState(), []))
+    if body.system:
+        state.pending_note = None
     reply, calls = await agent.turn(state, history, body.text, body.tableOrder)
     del history[:-24]
     # never start on a tool result or model turn: providers reject a history that doesn't open with the user
@@ -28,9 +31,18 @@ async def voice_turn(body: TurnIn) -> dict:
     return {"reply": reply, "toolCalls": calls, "state": state.view()}
 
 
+@router.get("/state/{session_id}")
+async def get_state(session_id: str) -> dict:
+    """Chat polls this while the robot is working; `pendingNote` says when to prompt the agent."""
+    state, _ = SESSIONS.setdefault(session_id, (GameState(), []))
+    return state.view()
+
+
 @router.post("/reset")
 async def reset(body: dict) -> dict:
-    SESSIONS.pop(str(body.get("sessionId", "")), None)
+    old = SESSIONS.pop(str(body.get("sessionId", "")), None)
+    if old and old[0].watcher:
+        old[0].watcher.cancel()
     return {"ok": True}
 
 

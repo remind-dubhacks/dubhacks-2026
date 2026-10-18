@@ -96,6 +96,11 @@ async def run(ws: WebSocket) -> None:
             if say_goodbye:
                 await to_gem({"realtimeInput": {"text": GOODBYE}})
 
+        async def notify(text: str) -> None:  # the robot finished: make the agent speak without a user turn
+            await to_gem({"realtimeInput": {"text": text}})
+            await ws.send_json({"type": "state", "state": state.view()})
+
+        state.notify = notify
         await to_gem(_setup())
 
         async def from_browser() -> None:

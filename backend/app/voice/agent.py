@@ -67,6 +67,14 @@ def rule_reply(text: str, calls: list[tuple[str, dict, dict]], state: GameState)
     return "Okay."
 
 
+def system_note_reply(state: GameState) -> str:
+    if state.phase == "awaiting":
+        return f"All mixed up. Please put them in this order: {', then '.join(state.target)}. Say done when you are finished."
+    if state.phase == "needs_staff":
+        return "The robot had a problem. Please wait a moment; a caregiver is coming to help."
+    return "Okay, we have paused."
+
+
 def provider() -> str:
     if settings.gemini_api_key:
         return "gemini"
@@ -131,7 +139,8 @@ async def turn(state: GameState, history: list[dict], text: str, table_order: li
     """Returns (reply, tool_calls_made). Gemini picks the tools; the keyword rules answer if there is no key or the call fails."""
     made: list[dict] = []
 
-    if STOP_RE.search(text):  # safety first: never depends on the model
+    is_note = text.startswith("(System:")
+    if not is_note and STOP_RE.search(text):  # safety first: never depends on the model
         res = await run_tool(state, "stop", {}, table_order)
         made.append({"name": "stop", "args": {}, "result": res})
         return "Okay, we've stopped. Thank you for spending time with me.", made
@@ -140,6 +149,10 @@ async def turn(state: GameState, history: list[dict], text: str, table_order: li
         out = await _gemini_turn(state, history, text, table_order)
         if out is not None:
             return out
+
+    if is_note:  # keyword-mode wording for robot notes
+        reply = system_note_reply(state)
+        return reply, made
 
     # Rule-based fallback (no key, or the LLM failed before answering)
     done = []

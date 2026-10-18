@@ -25,6 +25,9 @@ log = logging.getLogger("robot_worker")
 # `instruction` is sent to the Perceptron policy; `sequence` names a taught sequence in poses.json.
 ALLOWED: dict[tuple[str, str], dict] = {
     ("move_known_object", "tea_box"): {"instruction": "pick up the tea box and place it in the tray", "sequence": "tea"},
+    # Reorder game. `instruction` is the fixed text sent to the Perceptron policy (never user or LLM text);
+    # it must match what the policy was trained on. The camera, not a caregiver, checks the result.
+    ("shuffle", "reorder_set"): {"instruction": os.getenv("SHUFFLE_INSTRUCTION", "shuffle the objects on the table"), "sequence": "shuffle", "verify": False},
     ("move_known_object", "coffee_box"): {"instruction": "pick up the coffee box and place it in the tray", "sequence": "coffee"},
 }
 
@@ -65,7 +68,7 @@ def run(job_id: str, spec: dict) -> None:
     job.update(status="running", startedAt=now())
     try:
         executor.execute(spec, stop_event)
-        job["status"] = "verifying" if REQUIRE_VERIFICATION else "succeeded"
+        job["status"] = "verifying" if (REQUIRE_VERIFICATION and spec.get("verify", True)) else "succeeded"
     except Stopped:
         job["status"] = "stopped"
     except RobotError as e:

@@ -2,7 +2,7 @@ import { API } from "./api";
 
 export type VoiceState = {
   game: string | null;
-  phase: "idle" | "awaiting" | "complete" | "reveal" | "stopped";
+  phase: "idle" | "shuffling" | "awaiting" | "complete" | "reveal" | "stopped" | "needs_staff";
   attempt: number;
   maxTrials: number;
   target: string[];
@@ -12,15 +12,16 @@ export type VoiceState = {
   result: string;
   helpRequested: boolean;
   alerts: string[];
+  pendingNote: string | null;
 };
 
 export type ToolCall = { name: string; args: Record<string, unknown>; result: Record<string, unknown> };
 
-export async function voiceTurn(sessionId: string, text: string, tableOrder: string[]) {
+export async function voiceTurn(sessionId: string, text: string, tableOrder: string[], system = false) {
   const r = await fetch(`${API}/api/voice/turn`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ sessionId, text, tableOrder }),
+    body: JSON.stringify({ sessionId, text, tableOrder, system }),
   });
   if (!r.ok) throw new Error(`${r.status}`);
   return (await r.json()) as { reply: string; toolCalls: ToolCall[]; state: VoiceState };
@@ -56,4 +57,10 @@ export async function fetchTools(): Promise<ToolInfo[]> {
   } catch {
     return [];
   }
+}
+
+export async function voiceGetState(sessionId: string): Promise<VoiceState> {
+  const r = await fetch(`${API}/api/voice/state/${sessionId}`);
+  if (!r.ok) throw new Error(`${r.status}`);
+  return r.json();
 }

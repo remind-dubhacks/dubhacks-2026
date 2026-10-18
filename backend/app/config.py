@@ -10,6 +10,8 @@ class Settings:
     mongodb_db: str = os.getenv("MONGODB_DB", "remind")
     robot_worker_url: str = os.getenv("ROBOT_WORKER_URL", "http://localhost:8001")
     cors_origins: list[str] = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
+    # false = shuffle in software only (no robot worker needed)
+    use_robot_worker: bool = os.getenv("USE_ROBOT_WORKER", "true").lower() == "true"
     gemini_api_key: str = os.getenv("GEMINI_API_KEY", "")
     gemini_model: str = os.getenv("GEMINI_MODEL", "gemini-flash-latest")
     gemini_fallback_model: str = os.getenv("GEMINI_FALLBACK_MODEL", "gemini-flash-lite-latest")  # used on 429/503

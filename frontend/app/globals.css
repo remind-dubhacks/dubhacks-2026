@@ -182,3 +182,5 @@ textarea { font: inherit; font-size: 15px; width: 100%; padding: 8px; border-rad
 .st-real { background: #cfe8da; }
 .st-mock { background: #fbe6c2; }
 .st-placeholder { background: #e6e6e6; }
+
+.robotline { font-size: 1.3rem; background: #fbe6c2; border-radius: var(--radius); padding: 10px 16px; margin: 12px 0; }

@@ -1,7 +1,14 @@
+import pytest
 from fastapi.testclient import TestClient
 
 from app import main
+from app.config import settings
 from app.voice import agent
+
+
+@pytest.fixture(autouse=True)
+def software_shuffle(monkeypatch):
+    monkeypatch.setattr(settings, "use_robot_worker", False)
 
 
 def post(c, text, table=None):

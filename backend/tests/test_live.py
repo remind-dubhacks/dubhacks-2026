@@ -43,6 +43,7 @@ def test_live_relay(monkeypatch):
         if port:
             break
         threading.Event().wait(0.05)
+    monkeypatch.setattr(settings, "use_robot_worker", False)
     monkeypatch.setattr(settings, "gemini_api_key", "test")
     monkeypatch.setattr(settings, "gemini_live_url", f"ws://127.0.0.1:{port[0]}")
 

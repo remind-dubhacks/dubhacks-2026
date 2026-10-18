@@ -25,6 +25,7 @@ export type LiveEvents = {
   onAiDelta: (text: string) => void;
   onAiDone: (text: string) => void;
   onTool: (call: ToolCall, state: VoiceState) => void;
+  onState?: (state: VoiceState) => void;
   onError: (msg: string) => void;
   onClose: () => void;
 };
@@ -110,6 +111,7 @@ export class LiveVoice {
       case "ai_delta": this.ev.onAiDelta(d.text); break;
       case "ai_done": this.ev.onAiDone(d.text); break;
       case "tool": this.ev.onTool({ name: d.name, args: d.args, result: d.result }, d.state); break;
+      case "state": this.ev.onState?.(d.state); break;
       case "error": this.ev.onError(d.message); break;
     }
   }

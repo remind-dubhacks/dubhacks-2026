@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { LiveVoice } from "@/lib/liveVoice";
-import { fetchTools, fetchTts, voiceReset, voiceStatus, voiceTurn, type ToolCall, type ToolInfo, type VoiceState } from "@/lib/voice";
+import { fetchTools, fetchTts, voiceGetState, voiceReset, voiceStatus, voiceTurn, type ToolCall, type ToolInfo, type VoiceState } from "@/lib/voice";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const SR: any = typeof window !== "undefined" ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition : null;
@@ -88,6 +88,29 @@ export default function Voice() {
     }
   }, [startRec]);
 
+  // Chat / classic mode has no push channel: while the robot works, poll; when it finishes the backend
+  // leaves a note and we send it to the agent as a system turn so it speaks up.
+  const noteBusy = useRef(false);
+  useEffect(() => {
+    if (state?.phase !== "shuffling" || liveRef.current) return;
+    const t = setInterval(async () => {
+      if (noteBusy.current) return;
+      try {
+        const st = await voiceGetState(sid);
+        setState(st);
+        if (st.pendingNote) {
+          noteBusy.current = true;
+          const r = await voiceTurn(sid, st.pendingNote, [], true);
+          setCalls(r.toolCalls); setState(r.state);
+          setLog((l) => [...l, { role: "ai", text: r.reply, at: Date.now() }]);
+          if (modeRef.current === "voice" || readAllowed.current) speak(r.reply);
+          noteBusy.current = false;
+        }
+      } catch { noteBusy.current = false; }
+    }, 1000);
+    return () => clearInterval(t);
+  }, [state?.phase, sid, speak]);
+
   const send = useCallback(async (text: string) => {
     if (!text.trim()) return;
     if (liveRef.current) {
@@ -147,6 +170,7 @@ export default function Voice() {
         setCalls((c) => [call, ...c].slice(0, 8)); setState(st);
         setLog((l) => [...l, { role: "ai", text: "", tools: [call.name], at: Date.now() }]);
       },
+      onState: (st) => setState(st),
       onError: (m) => setErr(m),
       onClose: () => { setStarted(false); setListening(false); setBusy(false); },
     });
@@ -235,6 +259,9 @@ export default function Voice() {
         </div>
       ))}
       {mode === "voice" && heard && <p className="heard">“{heard}”</p>}
+
+      {state?.phase === "shuffling" && <p className="robotline">🤖 The robot is mixing up the objects…</p>}
+      {state?.phase === "needs_staff" && <p className="robotline warn">⚠️ The robot had a problem. A caregiver has been alerted.</p>}
 
       <h2>Conversation</h2>
       <div className="chat" aria-live="polite">
