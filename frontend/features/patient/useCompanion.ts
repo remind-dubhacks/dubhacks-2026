@@ -79,6 +79,7 @@ export function useCompanion() {
   const start = useCallback(async (name: string, games: string[], participantId?: string) => {
     setError(null);
     setStatus("connecting");
+    liveRef.current?.stop(); // starting again from the Esc setup card: close the old session so it ends (and is digested)
     const live = new LiveVoice({
       onUser: () => {},
       onAiDelta: () => {},
