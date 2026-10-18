@@ -1,7 +1,8 @@
 # Plan: nurse view to manage each patient's context
 
-Status: planned, not built. This is the next step after persistent Backboard memory
-(`backend/app/voice/memory.py`).
+Status: steps 1–4 are built. `/nurse` has urgent alerts, a resident carousel, Sessions / Memories / Context tabs, the
+consent toggle and "forget everything" (`backend/tests/test_nurse.py`). Not built yet: the review queue (3) and the
+nurse PIN. This followed persistent Backboard memory (`backend/app/voice/memory.py`).
 
 ## Goal
 A nurse can open any resident and see or change everything the companion knows about them:

@@ -90,10 +90,20 @@ class CareProfile(BaseModel):
 
 class ParticipantIn(BaseModel):
     alias: str
+    room: str = ""
     interestTags: list[str] = []
     communicationPreferences: dict = {}
     consentFlags: ConsentFlags = ConsentFlags()
     careProfile: CareProfile = CareProfile()
+
+
+class MemoryIn(BaseModel):
+    """A fact a nurse adds or corrects by hand."""
+    content: str = Field(min_length=1, max_length=500)
+
+
+class ConsentIn(BaseModel):
+    rememberPreferences: bool
 
 
 class SessionCreate(BaseModel):

@@ -121,8 +121,30 @@ async def recall(assistant_id: str | None, query: str = "") -> list[str]:
 
 
 async def list_all(assistant_id: str, timeout_s: float | None = None) -> list[dict]:
+    """Every stored fact, with where it came from (kind: care_profile, session, nurse) and when, for the nurse."""
     res = await _call("GET", f"/assistants/{assistant_id}/memories", timeout_s=timeout_s)
-    return [{"id": m["id"], "content": m["content"]} for m in (res or {}).get("memories", [])]
+    return [{"id": m["id"], "content": m["content"], "kind": (m.get("metadata") or {}).get("kind", "fact"),
+             "createdAt": m.get("created_at")} for m in (res or {}).get("memories", [])]
+
+
+async def update(assistant_id: str, memory_id: str, content: str, kind: str = "nurse") -> bool:
+    return await _call("PUT", f"/assistants/{assistant_id}/memories/{memory_id}", timeout_s=settings.backboard_write_timeout_s,
+                       json={"content": content, "metadata": {"kind": kind}}) is not None
+
+
+async def delete(assistant_id: str, memory_id: str) -> bool:
+    return await _call("DELETE", f"/assistants/{assistant_id}/memories/{memory_id}",
+                       timeout_s=settings.backboard_write_timeout_s, allow_missing=True) is not None
+
+
+async def delete_assistant(assistant_id: str) -> bool:
+    """Forget everything: the assistant and all its memories. A missing assistant counts as done."""
+    _verified.discard(assistant_id)
+    ok = await _call("DELETE", f"/assistants/{assistant_id}", timeout_s=settings.backboard_write_timeout_s,
+                     allow_missing=True) is not None
+    if ok:
+        log.info("deleted Backboard assistant %s", assistant_id)
+    return ok
 
 
 def _words(text: str, ignore: set[str]) -> set[str]:
