@@ -21,9 +21,11 @@ from .models import (
     TERMINAL_JOB,
     TRANSITIONS,
     CareProfile,
+    ConsentIn,
     FeedbackIn,
     JobCreate,
     JobStatus,
+    MemoryIn,
     ParticipantIn,
     SessionCreate,
     SessionState,
@@ -42,6 +44,7 @@ log = logging.getLogger("remind")
 DEMO_PARTICIPANT = {
     "_id": "demo-rose",
     "alias": "Rose",  # synthetic, pseudonymous demo profile — never real patient data
+    "room": "12",
     "interestTags": ["tea", "gardening", "family gatherings"],
     "communicationPreferences": {"largeText": True, "readAloud": True},
     "consentFlags": {"sessionConsent": True, "rememberPreferences": True},
@@ -70,6 +73,23 @@ DEMO_PARTICIPANT = {
 }
 
 
+# More synthetic residents for the nurse dashboard (never real patient data).
+DEMO_RESIDENTS = [
+    {"_id": "demo-arthur", "alias": "Arthur", "room": "7", "careProfile": {
+        "preferredName": "Arthur", "interests": ["steam trains", "cricket"],
+        "lifeStory": ["Worked as a railway signalman for forty years."], "calmingStrategies": ["talk about trains"]}},
+    {"_id": "demo-margaret", "alias": "Margaret", "room": "3", "careProfile": {
+        "preferredName": "Maggie", "pace": "slow", "interests": ["baking", "church hymns"],
+        "lifeStory": ["Ran the village bakery with her sister."], "avoidTopics": ["her old house"]}},
+    {"_id": "demo-tom", "alias": "Tom", "room": "15", "careProfile": {
+        "preferredName": "Tom", "interests": ["fishing", "big band music"],
+        "lifeStory": ["Grew up by the lake and still talks about his first boat."]}},
+    {"_id": "demo-edith", "alias": "Edith", "room": "9", "careProfile": {
+        "preferredName": "Edith", "hearing": "hard_of_hearing", "interests": ["knitting", "her grandchildren"],
+        "lifeStory": ["Taught primary school for thirty years."]}},
+]
+
+
 def now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -93,6 +113,12 @@ async def seed(store: Store) -> None:
         await store.insert("participants", {**DEMO_PARTICIPANT, "createdAt": now()})
     elif "careProfile" not in demo:  # seeded before care profiles existed
         await store.update("participants", demo["_id"], {"careProfile": DEMO_PARTICIPANT["careProfile"]})
+    elif "room" not in demo:
+        await store.update("participants", demo["_id"], {"room": DEMO_PARTICIPANT["room"]})
+    for r in DEMO_RESIDENTS:
+        if not await store.get("participants", r["_id"]):
+            doc = ParticipantIn(alias=r["alias"], room=r["room"], careProfile=CareProfile(**r["careProfile"]))
+            await store.insert("participants", {"_id": r["_id"], **doc.model_dump(), "preferences": {}, "createdAt": now()})
     for act in ACTIVITIES.values():
         if not await store.get("activities", act["_id"]):
             await store.insert("activities", act)
@@ -205,31 +231,114 @@ async def get_participant(pid: str, request: Request):
     return p
 
 
+async def participant_or_404(s: Store, pid: str) -> dict:
+    p = await s.get("participants", pid)
+    if not p:
+        raise HTTPException(404, "participant not found")
+    return p
+
+
+def remembers(p: dict) -> bool:
+    return bool(p.get("consentFlags", {}).get("rememberPreferences"))
+
+
+async def memory_assistant(s: Store, p: dict) -> str:
+    """This person's Backboard assistant, for a nurse's edit. Refused without consent to remember."""
+    if not remembers(p):
+        raise HTTPException(409, "consent to remember is off")
+    if not memory.enabled():
+        raise HTTPException(503, "long-term memory is off (BACKBOARD_API_KEY not set)")
+    if not (aid := await memory.ensure_assistant(s, p)):
+        raise HTTPException(502, "could not reach Backboard")
+    return aid
+
+
 @app.put("/api/participants/{pid}/care-profile")
 async def update_care_profile(pid: str, body: CareProfile, request: Request):
     """Replace the care sheet. New life-story and interest lines are also added to long-term memory."""
     s = store(request)
-    p = await s.get("participants", pid)
-    if not p:
-        raise HTTPException(404, "participant not found")
+    p = await participant_or_404(s, pid)
     old = memory.profile_memories(p.get("careProfile") or {})
     p = await s.update("participants", pid, {"careProfile": body.model_dump()})
-    if p.get("consentFlags", {}).get("rememberPreferences") and (aid := await memory.ensure_assistant(s, p)):
+    if remembers(p) and (aid := await memory.ensure_assistant(s, p)):
         for line in memory.profile_memories(p["careProfile"]):
             if line not in old:
                 await memory.add(aid, line, kind="care_profile")
     return p
 
 
+@app.put("/api/participants/{pid}/consent")
+async def update_consent(pid: str, body: ConsentIn, request: Request):
+    """Consent to remember. Off: nothing new is saved or recalled from the next write on (live calls re-check it
+    before each save); what is already stored is kept until the nurse forgets it. On: the assistant is (re)linked."""
+    s = store(request)
+    p = await participant_or_404(s, pid)
+    flags = {**p.get("consentFlags", {}), "rememberPreferences": body.rememberPreferences}
+    p = await s.update("participants", pid, {"consentFlags": flags})
+    if body.rememberPreferences:
+        tasks.background(memory.ensure_assistant(s, dict(p)))
+    return p
+
+
 @app.get("/api/participants/{pid}/memories")
 async def participant_memories(pid: str, request: Request):
-    """What the companion remembers about this person (Backboard), for the nurse."""
+    """What the companion remembers about this person (Backboard), for the nurse. With consent off, what is still
+    kept is listed (so it can be forgotten), but no assistant is created."""
     s = store(request)
-    p = await s.get("participants", pid)
-    if not p:
-        raise HTTPException(404, "participant not found")
-    aid = await memory.ensure_assistant(s, p) if p.get("consentFlags", {}).get("rememberPreferences") else None
-    return {"enabled": memory.enabled(), "assistantId": aid, "memories": await memory.list_all(aid) if aid else []}
+    p = await participant_or_404(s, pid)
+    aid = await memory.ensure_assistant(s, p) if remembers(p) else p.get("backboardAssistantId")
+    return {"enabled": memory.enabled(), "remember": remembers(p), "assistantId": aid,
+            "memories": await memory.list_all(aid) if aid else []}
+
+
+@app.post("/api/participants/{pid}/memories")
+async def add_memory(pid: str, body: MemoryIn, request: Request):
+    s = store(request)
+    aid = await memory_assistant(s, await participant_or_404(s, pid))
+    if not await memory.add(aid, body.content.strip(), kind="nurse"):
+        raise HTTPException(502, "Backboard did not save the fact")
+    return {"ok": True}
+
+
+@app.patch("/api/participants/{pid}/memories/{mid}")
+async def edit_memory(pid: str, mid: str, body: MemoryIn, request: Request):
+    s = store(request)
+    aid = await memory_assistant(s, await participant_or_404(s, pid))
+    if not await memory.update(aid, mid, body.content.strip()):
+        raise HTTPException(502, "Backboard did not save the change")
+    return {"ok": True}
+
+
+@app.delete("/api/participants/{pid}/memories/{mid}")
+async def delete_memory(pid: str, mid: str, request: Request):
+    """Deleting is allowed with consent off too: forgetting never needs consent."""
+    s = store(request)
+    p = await participant_or_404(s, pid)
+    aid = p.get("backboardAssistantId")
+    if not aid:
+        raise HTTPException(404, "nothing is remembered for this person")
+    if not await memory.delete(aid, mid):
+        raise HTTPException(502, "Backboard did not delete the fact")
+    return {"ok": True}
+
+
+@app.delete("/api/participants/{pid}/memories")
+async def forget_everything(pid: str, request: Request):
+    """Delete this person's Backboard assistant and turn consent off, so the next call does not start a new one."""
+    s = store(request)
+    p = await participant_or_404(s, pid)
+    if (aid := p.get("backboardAssistantId")) and not await memory.delete_assistant(aid):
+        raise HTTPException(502, "Backboard did not delete the memories")
+    flags = {**p.get("consentFlags", {}), "rememberPreferences": False}
+    return await s.update("participants", pid, {"backboardAssistantId": None, "consentFlags": flags})
+
+
+@app.get("/api/participants/{pid}/sessions")
+async def participant_sessions(pid: str, request: Request, limit: int = 50):
+    s = store(request)
+    await participant_or_404(s, pid)
+    docs = await s.find("companion_sessions", {"participantId": pid})
+    return sorted(docs, key=lambda d: d["startedAt"], reverse=True)[:limit]
 
 
 @app.delete("/api/participants/{pid}")
@@ -241,6 +350,8 @@ async def delete_participant(pid: str, request: Request):
         for coll in ("robot_jobs", "feedback", "messages"):
             deleted[coll] += await s.delete_many(coll, {"sessionId": sess["_id"]})
     await s.delete_many("sessions", {"participantId": pid})
+    if (p := await s.get("participants", pid)) and p.get("backboardAssistantId"):
+        await memory.delete_assistant(p["backboardAssistantId"])
     deleted["participants"] = await s.delete_many("participants", {"_id": pid})
     return {"deleted": deleted}
 

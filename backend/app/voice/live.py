@@ -230,7 +230,7 @@ async def run(ws: WebSocket) -> None:
         if memory.is_known(fact, up.memories + remembered, name):
             return {"ok": True, "note": "Already remembered."}
         remembered.append(fact)
-        background(memory.add(assistant_id, fact, kind="session"))
+        background(if_still_remembering(ws, participant, memory.add(assistant_id, fact, kind="session")))
         log.info("remember for %s -> assistant %s: %r", participant.get("_id"), assistant_id, fact[:80])
         return {"ok": True}
 
@@ -350,10 +350,26 @@ async def run(ws: WebSocket) -> None:
         await save_record(ws, state, started_at, participant.get("_id"))
         background(close_quietly(up))  # Backboard's stop handshake can take a moment; don't hold the handler
         if assistant_id:
-            background(memory.digest_session(assistant_id, name, said, remembered))
+            background(if_still_remembering(ws, participant, memory.digest_session(assistant_id, name, said, remembered)))
         else:
             log.info("not saving memories: %s", "no resident picked" if not participant
                      else "no consent to remember" if not can_remember(participant) else "Backboard assistant unavailable")
+
+
+async def if_still_remembering(ws: WebSocket, participant: dict, write) -> None:
+    """Run a memory write only if consent is still on: a nurse may turn it off during the call, so it is read
+    again from the store before every save."""
+    store, pid = getattr(ws.app.state, "store", None), participant.get("_id")
+    try:
+        fresh = await store.get("participants", pid) if store is not None and pid else None
+    except Exception as e:  # noqa: BLE001
+        log.warning("could not re-check consent for %s: %r", pid, e)
+        fresh = None
+    if fresh and can_remember(fresh):
+        await write
+    else:
+        write.close()  # never awaited: nothing is sent
+        log.info("not saving memory for %s: consent to remember is off now", pid)
 
 
 async def close_quietly(up) -> None:

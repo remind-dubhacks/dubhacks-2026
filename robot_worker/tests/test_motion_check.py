@@ -652,9 +652,19 @@ def test_missed_pick_is_retried_once(monkeypatch):
     assert [v for k, v in ex.robot.path if k == "grip"].count(shuffle_math.GRIP_CLOSE) == 4
 
 
+def test_missed_pick_searches_to_the_side_until_the_gripper_holds(monkeypatch):
+    poses = taught(monkeypatch)
+    # 1st close misses, same-spot retry misses, +2.5 deg holds; then the other two picks hold.
+    ex = executors.ScriptedExecutor(robot=GripArm([False, False, True, True, True]))
+    ex.execute({"instruction": "x", "shuffle": "swap_lr"}, executors.threading.Event())
+    assert {"slot": 1, "object": "black", "searchDeg": 2.5} in ex.corrections
+    pans = [t["shoulder_pan.pos"] for k, t in ex.robot.path if k == "move"]
+    assert poses["down_s1"]["shoulder_pan.pos"] + 2.5 in pans
+
+
 def test_twice_missed_pick_stops_before_placing(monkeypatch):
     taught(monkeypatch)
-    ex = executors.ScriptedExecutor(robot=GripArm([False, False]))
+    ex = executors.ScriptedExecutor(robot=GripArm([False] * 6))
     with pytest.raises(executors.RobotError) as e:
         ex.execute({"instruction": "x", "shuffle": "swap_lr"}, executors.threading.Event())
     assert e.value.code == "grasp_missed" and "slot 1" in str(e.value)
