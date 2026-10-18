@@ -79,7 +79,10 @@ export default function CampaignPanel({ status, hfUser, onError }: { status: Cam
 
   return (
     <section>
-      <h2>Recording campaign</h2>
+      <div className="row" style={{ justifyContent: "space-between" }}>
+        <h2 style={{ margin: 0 }}>Recording campaign</h2>
+        <a className="primary" href="/studio/record" style={{ padding: "10px 18px", borderRadius: 999, textDecoration: "none" }}>Open simple Record screen →</a>
+      </div>
       <p className="small">
         Set the targets once, then a teammate on the leader arm just follows the spoken prompts. Each batch: set up → camera check → “ready” → record → break. When every target is reached it uploads and starts training. Any fault pauses it; it never retries by itself.
       </p>

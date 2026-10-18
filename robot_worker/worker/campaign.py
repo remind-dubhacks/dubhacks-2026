@@ -62,6 +62,20 @@ def default_config() -> Config:
     )
 
 
+def short_reason(text: str) -> str:
+    """One spoken sentence for common faults; the full text stays in the log."""
+    t = text.lower()
+    if "overload" in t and "gripper" in t:
+        return "The gripper overloaded. Grip more gently, clear the fault, then resume."
+    if "overload" in t:
+        return "A motor overloaded. Check nothing is stuck, clear the fault, then resume."
+    if "too old" in t or "read failed" in t:
+        return "A camera lagged. Check its USB cable, then resume."
+    if "missing motor" in t or "not respond" in t:
+        return "A motor isn't answering. Check power, then resume."
+    return "See the log, then resume."
+
+
 class Campaign:
     def __init__(self) -> None:
         self.lock = threading.RLock()
@@ -175,7 +189,7 @@ class Campaign:
 
     def _run(self) -> None:
         try:
-            self.say("Campaign started.", "preflight")
+            self.say("Starting.", "preflight")
             while not self.stop_flag:
                 if not self._wait_unpaused():
                     break
@@ -204,7 +218,7 @@ class Campaign:
         # 1. Setup prompt + vision check
         self.ready.clear()
         self.skip_check.clear()
-        self.say(f"Next: {n} episodes of {t.object}. Set up: {variation}. Vary it a little each episode. Say ready when the scene is set.", "setup")
+        self.say(f"Batch {k + 1}: {n} episodes. {variation}. Say ready.", "setup")
         if self.config.visionCheck:
             self._vision_check(t)
         while not self.ready.wait(0.3):
@@ -215,18 +229,18 @@ class Campaign:
 
         # 2. Preflight: nothing else running, motors healthy
         if studio.proc.running:
-            return self.pause(f"{studio.proc.kind} is already running. Stop it, then press Start.")
+            return self.pause(f"{studio.proc.kind} is running. Stop it first.")
         try:
             studio.require_ports()
         except HTTPException as e:
-            return self.pause(f"Can't record: {e.detail}")
+            return self.pause(f"Can't record. {short_reason(str(e.detail))}")
 
         # 3. Record
         before = studio.episode_count(self.config.repo)
         cmd, _ = studio.record_cmd(studio.RecordIn(
             repo=self.config.repo, task=t.task, episodes=n, episodeSeconds=self.config.episodeSeconds,
             resetSeconds=self.config.resetSeconds, rerun=True, sounds=False))
-        self.say(f"Recording {n} episodes: {t.task}.", "recording")
+        self.say("Recording.", "recording")
         studio.proc.start("record", cmd)
         while studio.proc.running:
             time.sleep(0.5)
@@ -235,16 +249,16 @@ class Campaign:
             self.progress[t.id] = done + gained
             self.batches[t.id] = k + 1
         if studio.proc.stopped_by_user or self.stop_flag:
-            return self.pause(f"Recording stopped. Kept {gained} new episode{'s' if gained != 1 else ''}. Press Start to continue.")
+            return self.pause(f"Stopped. {gained} saved. Say resume to continue.")
         if studio.proc.exit_code not in (0, None):
             reason = next((l for l in reversed([x for _, x in studio.proc.logs]) if "Error" in l or "error" in l), "see the log")
-            return self.pause(f"Recording failed after {gained} episodes: {reason[:160]}. Fix it, then press Start.")
+            return self.pause(f"Recording failed. {gained} saved. {short_reason(reason)}")
 
         # 4. Break
         total = self.progress[t.id]
-        msg = f"Batch done: {t.object} {total} of {t.target}."
+        msg = f"Batch done. {total} of {t.target}."
         if self._next_target() is not None and self.config.breakSeconds:
-            self.say(f"{msg} Take a {self.config.breakSeconds} second break.", "break")
+            self.say(f"{msg} Short break.", "break")
             self._wait(self.config.breakSeconds)
         else:
             self.say(msg)
@@ -289,7 +303,7 @@ class Campaign:
         return None
 
     def _finish(self) -> None:
-        self.say(f"All targets reached: {sum(self.progress.values())} new episodes recorded.", "uploading" if self.config.autoUpload else "done")
+        self.say(f"All done. {sum(self.progress.values())} episodes. Uploading." if self.config.autoUpload else f"All done. {sum(self.progress.values())} episodes.", "uploading" if self.config.autoUpload else "done")
         if not self.config.autoUpload:
             return self.say("Campaign complete. Upload and train from the Datasets section when ready.", "done")
         if not os.getenv("PERCEPTRON_API_KEY"):

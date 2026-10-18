@@ -90,7 +90,7 @@ def test_failure_pauses_and_keeps_episodes(env):
     operator(c, time.time() + 10)
     c.start()
     assert wait_for(lambda: c.state == "paused")
-    assert "too old" in c.message
+    assert "camera lagged" in c.message
     assert sum(c.progress.values()) == 3  # 2 from batch 1 + 1 saved before the failure
     c.start()  # operator fixed it and resumes
     assert wait_for(lambda: c.state == "done")

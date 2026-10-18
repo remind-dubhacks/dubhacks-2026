@@ -167,3 +167,21 @@ button.start { width: 100%; min-height: 110px; font-size: 2rem; margin: 16px 0; 
 button.big { font-size: 1.3rem; padding: 18px 28px; }
 textarea { font: inherit; font-size: 15px; width: 100%; padding: 8px; border-radius: 10px; border: 2px solid var(--border); background: var(--surface); color: var(--text); }
 .table input { font-size: 15px; }
+
+/* Focused record page */
+.rec { max-width: 760px; text-align: center; }
+.rec-top { display: flex; justify-content: space-between; gap: 12px; text-align: left; }
+.rec-progress { font-size: 1.4rem; margin: 16px 0; }
+.rec-progress strong { font-size: 2.4rem; }
+.rec-phase { border-radius: 24px; padding: 28px 16px; margin: 12px 0; color: #fff; background: #6b6459; }
+.rec-phase.go { background: #2f6b4f; }
+.rec-phase.reset { background: #b06a00; }
+.rec-phase.wait { background: #3d5a80; }
+.rec-phase.stop { background: var(--stop); }
+.rec-phase.done { background: #2f6b4f; }
+.rec-label { font-size: 2rem; font-weight: 700; }
+.rec-count { font-size: 4.5rem; font-weight: 800; line-height: 1; margin-top: 8px; font-variant-numeric: tabular-nums; }
+.rec-msg { font-size: 1.3rem; min-height: 2.6em; }
+.rec-buttons { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; margin: 16px 0; }
+button.huge { font-size: 1.8rem; padding: 22px 48px; min-width: 200px; }
+.voice-compact { justify-content: center; margin-top: 8px; }
