@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 import httpx
 from fastapi import APIRouter, HTTPException, Request, Response, WebSocket
 from pydantic import BaseModel
@@ -79,6 +81,15 @@ async def sessions(request: Request, limit: int = 50) -> list[dict]:
     """Recent patient-screen sessions (newest first) for the nurse screen."""
     docs = await request.app.state.store.find("companion_sessions")
     return sorted(docs, key=lambda d: d["startedAt"], reverse=True)[:limit]
+
+
+@router.post("/sessions/{sid}/acknowledge")
+async def acknowledge(sid: str, request: Request) -> dict:
+    """A nurse has seen this session's alerts; they leave the urgent list."""
+    doc = await request.app.state.store.update("companion_sessions", sid, {"acknowledgedAt": datetime.now(timezone.utc)})
+    if not doc:
+        raise HTTPException(404, "session not found")
+    return doc
 
 
 @router.websocket("/live")
