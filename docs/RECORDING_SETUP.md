@@ -6,7 +6,7 @@ Print this out and keep it next to the arms. The Record screen (`/studio/record`
 
 | Slot 1 (left) | Slot 2 | Slot 3 | Slot 4 (right end) |
 |---|---|---|---|
-| ⚫ **black keycap** keyring | ⚪ **white keycap** keyring | 🔵 **blue Salesforce** keyring | *empty* (parking spot) |
+| ⚫ **black keycap** keyring | ⚪ **white keycap** keyring | 🟣 **purple keycap** keyring | *empty* (parking spot) |
 
 - Tape the 4 slots in a straight line, evenly spaced, in reach of the follower.
 - **This is the START position**, for every episode and after every reset.
@@ -18,11 +18,11 @@ You move the **leader** arm and the follower copies you. Do the moves in this or
 
 | # | Shuffle (what the model is told) | Moves, in order | END position (slot 1 · 2 · 3, slot 4 empty) |
 |---|---|---|---|
-| 1 | swap the left and right objects | black keycap → slot 4 · blue Salesforce → slot 1 · black keycap → slot 3 | 🔵 blue · ⚪ white · ⚫ black |
-| 2 | swap the left and middle objects | black keycap → slot 4 · white keycap → slot 1 · black keycap → slot 2 | ⚪ white · ⚫ black · 🔵 blue |
-| 3 | swap the middle and right objects | white keycap → slot 4 · blue Salesforce → slot 2 · white keycap → slot 3 | ⚫ black · 🔵 blue · ⚪ white |
-| 4 | rotate the objects one spot to the left | black keycap → slot 4 · white keycap → slot 1 · blue Salesforce → slot 2 · black keycap → slot 3 | ⚪ white · 🔵 blue · ⚫ black |
-| 5 | rotate the objects one spot to the right | blue Salesforce → slot 4 · white keycap → slot 3 · black keycap → slot 2 · blue Salesforce → slot 1 | 🔵 blue · ⚫ black · ⚪ white |
+| 1 | swap the left and right objects | black keycap → slot 4 · purple keycap → slot 1 · black keycap → slot 3 | 🟣 purple · ⚪ white · ⚫ black |
+| 2 | swap the left and middle objects | black keycap → slot 4 · white keycap → slot 1 · black keycap → slot 2 | ⚪ white · ⚫ black · 🟣 purple |
+| 3 | swap the middle and right objects | white keycap → slot 4 · purple keycap → slot 2 · white keycap → slot 3 | ⚫ black · 🟣 purple · ⚪ white |
+| 4 | rotate the objects one spot to the left | black keycap → slot 4 · white keycap → slot 1 · purple keycap → slot 2 · black keycap → slot 3 | ⚪ white · 🟣 purple · ⚫ black |
+| 5 | rotate the objects one spot to the right | purple keycap → slot 4 · white keycap → slot 3 · black keycap → slot 2 · purple keycap → slot 1 | 🟣 purple · ⚫ black · ⚪ white |
 
 Each shuffle is recorded **12 times**, 60 episodes in total, in batches of 4 that rotate through the 5 shuffles.
 
