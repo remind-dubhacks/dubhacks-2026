@@ -9,6 +9,11 @@ import httpx
 from ..config import settings
 from .tools import TOOL_SCHEMAS, GameState, run_tool
 
+# Gemini wants {name, description, parameters?} and rejects an empty properties object.
+GEMINI_DECLS = [
+    {k: v for k, v in t["function"].items() if not (k == "parameters" and not v.get("properties"))} for t in TOOL_SCHEMAS
+]
+
 log = logging.getLogger("remind.voice")
 
 SYSTEM = """You are ReMind, a warm, patient companion for a person living with dementia, in a care home. A caregiver is supervising.
@@ -78,6 +83,57 @@ async def _chat(messages: list[dict]) -> dict | None:
         return None
 
 
+def provider() -> str:
+    if settings.gemini_api_key:
+        return "gemini"
+    return "grok" if settings.xai_api_key else "rules"
+
+
+async def _gemini(contents: list[dict], system: str) -> dict:
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{settings.gemini_model}:generateContent"
+    async with httpx.AsyncClient(timeout=20) as client:
+        r = await client.post(
+            url,
+            headers={"x-goog-api-key": settings.gemini_api_key},
+            json={
+                "systemInstruction": {"parts": [{"text": system}]},
+                "contents": contents,
+                "tools": [{"functionDeclarations": GEMINI_DECLS}],
+                "toolConfig": {"functionCallingConfig": {"mode": "AUTO"}},
+            },
+        )
+        r.raise_for_status()
+        return r.json()["candidates"][0]["content"]
+
+
+async def _gemini_turn(state: GameState, history: list[dict], text: str, table_order: list[str] | None) -> tuple[str, list[dict]] | None:
+    """Gemini picks the tools. Returns None on any API failure (history is rolled back) so rules can answer."""
+    start = len(history)
+    made: list[dict] = []
+    history.append({"role": "user", "parts": [{"text": text}]})
+    system = SYSTEM.format(state=json.dumps(state.view()))
+    try:
+        for _ in range(4):
+            content = await _gemini(history, system)
+            history.append(content)
+            parts = content.get("parts", [])
+            calls = [p["functionCall"] for p in parts if "functionCall" in p]
+            if not calls:
+                reply = "".join(p.get("text", "") for p in parts if not p.get("thought")).strip()
+                return reply or "I'm here.", made
+            responses = []
+            for c in calls:
+                res = await run_tool(state, c["name"], c.get("args") or {}, table_order)
+                made.append({"name": c["name"], "args": c.get("args") or {}, "result": res})
+                responses.append({"functionResponse": {"name": c["name"], "response": {"result": res}}})
+            history.append({"role": "user", "parts": responses})
+        return "Let me try that again in a moment.", made
+    except Exception as e:  # noqa: BLE001
+        log.warning("Gemini turn failed, using rules: %s", e)
+        del history[start:]
+        return None
+
+
 async def turn(state: GameState, history: list[dict], text: str, table_order: list[str] | None) -> tuple[str, list[dict]]:
     """Returns (reply, tool_calls_made). `history` is mutated (kept short by the caller)."""
     made: list[dict] = []
@@ -87,11 +143,18 @@ async def turn(state: GameState, history: list[dict], text: str, table_order: li
         made.append({"name": "stop", "args": {}, "result": res})
         return "Okay, we've stopped. Thank you for spending time with me.", made
 
-    history.append({"role": "user", "content": text})
+    if provider() == "gemini":
+        out = await _gemini_turn(state, history, text, table_order)
+        if out is not None:
+            return out
+        made = []
+        history.append({"role": "user", "parts": [{"text": text}]})
+    else:
+        history.append({"role": "user", "content": text})
     system = {"role": "system", "content": SYSTEM.format(state=json.dumps(state.view()))}
 
     for _ in range(4):
-        msg = await _chat([system, *history])
+        msg = await _chat([system, *history]) if provider() == "grok" else None
         if msg is None:
             break
         history.append({k: v for k, v in msg.items() if v is not None})
@@ -117,5 +180,5 @@ async def turn(state: GameState, history: list[dict], text: str, table_order: li
         made.append({"name": name, "args": args, "result": res})
         done.append((name, args, res))
     reply = rule_reply(text, done, state)
-    history.append({"role": "assistant", "content": reply})
+    history.append({"role": "model", "parts": [{"text": reply}]} if provider() == "gemini" else {"role": "assistant", "content": reply})
     return reply, made
