@@ -83,6 +83,13 @@ class SO101:
         state = [float(obs[j]) for j in JOINTS]
         return state, _png(obs["side"]), _png(obs["wrist"])
 
+    def side_frame(self):
+        """Latest side-camera frame as BGR (for the hands check), without a full observation."""
+        import cv2
+
+        cam = self.robot.cameras.get("side")
+        return cv2.cvtColor(cam.async_read(), cv2.COLOR_RGB2BGR) if cam is not None else None
+
     def act(self, action: list[float]) -> None:
         self.robot.send_action(dict(zip(JOINTS, action)))
 

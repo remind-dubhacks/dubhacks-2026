@@ -10,6 +10,34 @@ from .motion_guard import ActionGuard, GraspMonitor, GuardError
 from .robot import Stopped
 
 DEFAULT_START = ["black", "white", "purple"]  # docs/RECORDING_SETUP.md
+HANDS_EVERY = int(os.getenv("HANDS_CHECK_EVERY_N_ACTIONS", "6"))  # ~5 checks a second at 30 fps
+HANDS_CLEAR_S = float(os.getenv("HANDS_CLEAR_SECONDS", "1.5"))  # table must stay clear this long
+HANDS_MAX_WAIT_S = float(os.getenv("HANDS_MAX_WAIT_SECONDS", "30"))
+
+
+def wait_for_clear_table(robot, stop: threading.Event, say=None) -> bool:
+    """If a hand is in the workspace, hold still until the table has been clear for HANDS_CLEAR_S.
+    Returns True if it had to pause. Raises RobotError if the hand stays too long."""
+    from .table_view import hands_in
+
+    frame = robot.side_frame()
+    if frame is None or not hands_in(frame):
+        return False
+    if say:
+        say("I'll wait while your hand is on the table.")
+    start = time.monotonic()
+    clear_since = None
+    while time.monotonic() - start < HANDS_MAX_WAIT_S:
+        if stop.wait(0.1):
+            raise Stopped()
+        frame = robot.side_frame()
+        if frame is not None and not hands_in(frame):
+            clear_since = clear_since or time.monotonic()
+            if time.monotonic() - clear_since >= HANDS_CLEAR_S:
+                return True
+        else:
+            clear_since = None
+    raise RobotError("hands_in_workspace", "a hand stayed in the workspace, so the robot stopped")
 
 
 def shuffle_check(spec: dict, side_png: bytes | None) -> dict | None:
@@ -89,6 +117,13 @@ class PerceptronExecutor:
         self.robot = SO101()
         self.guard = ActionGuard()
         self.last_check: dict | None = None
+        self.hand_pauses = 0
+
+    @staticmethod
+    def say(text: str) -> None:
+        from . import voice
+
+        voice.speak(text)
 
     def ready(self) -> bool:
         return self.client.deployment().get("status") == "ready"
@@ -99,6 +134,8 @@ class PerceptronExecutor:
         monitor = GraspMonitor(self.fps)
         guard_total = {"chunks": 0, "clampedHard": 0, "clampedEnvelope": 0, "stepLimited": 0}
         side = None
+        self.hand_pauses = 0
+        wait_for_clear_table(self.robot, stop, self.say)
         grant = self.client.grant(f"remind-{uuid.uuid4().hex[:12]}", ttl_seconds=600)
         try:
             self.client.create_session(grant, instruction, self.contract_id)
@@ -136,9 +173,12 @@ class PerceptronExecutor:
                 guard_total["chunks"] += 1
                 for k in ("clampedHard", "clampedEnvelope", "stepLimited"):
                     guard_total[k] += report.to_dict()[k]
-                for action in chunk:
+                for n, action in enumerate(chunk):
                     if stop.is_set():
                         raise Stopped()
+                    if n % HANDS_EVERY == 0 and wait_for_clear_table(self.robot, stop, self.say):
+                        self.hand_pauses += 1
+                        break  # the table may have changed: get a fresh plan from the policy
                     self.robot.act(action)
                     time.sleep(1 / self.fps)
             # The policy ran its full episode budget. Now check the result instead of assuming it.
@@ -147,8 +187,8 @@ class PerceptronExecutor:
             if monitor.holding:
                 raise RobotError("object_still_held", "time ran out with a keyring still in the gripper")
             check = shuffle_check(spec, side) or {}
-            self.last_check = {**check, "grasp": monitor.summary(), "guard": guard_total} if check else {
-                "grasp": monitor.summary(), "guard": guard_total}
+            extra = {"grasp": monitor.summary(), "guard": guard_total, "handPauses": self.hand_pauses}
+            self.last_check = {**check, **extra}
             if check.get("verdict") == "mismatch":
                 raise RobotError("shuffle_mismatch", f"expected {check['expected']}, saw {check['observed']}")
         except Stopped:

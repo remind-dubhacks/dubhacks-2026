@@ -301,9 +301,22 @@ class FakeClient:
         return {"actions": self.chunks.pop(0) if self.chunks else [[0.0] * 6]}
 
 
+TABLE = np.full((480, 640, 3), 235, np.uint8)
+
+
+def hand_frame():
+    f = TABLE.copy()
+    f[150:400, 200:420] = (120, 150, 205)  # BGR skin tone
+    return f
+
+
 class FakeRobot:
-    def __init__(self, state, side_png, end_grip=35.0):
+    def __init__(self, state, side_png, end_grip=35.0, frames=None):
         self.state, self.side, self.end_grip, self.sent = state, side_png, end_grip, []
+        self.frames = list(frames or [])
+
+    def side_frame(self):
+        return self.frames.pop(0) if self.frames else TABLE
 
     def observe(self):
         return list(self.state[:-1]) + [self.end_grip], self.side, b""
@@ -321,6 +334,8 @@ def make_exec(limits, chunks, side_png, end_grip=35.0, seconds=0.05):
     ex.guard = ActionGuard(limits)
     ex.robot = FakeRobot(middle(limits), side_png, end_grip)
     ex.last_check = None
+    ex.hand_pauses = 0
+    ex.say = lambda text: None
     return ex
 
 
@@ -391,3 +406,51 @@ def test_instructions_match_the_training_data_word_for_word():
     tasks = set(pd.read_parquet(DATASET / "meta/tasks.parquet").index)
     assert {s.instruction for s in SHUFFLES.values()} == tasks
     assert json.loads((ROOT / "motion_limits.json").read_text())["source"]["dataset"] == "remind/remind-shuffle"
+
+
+# ---------------------------------------------------------------- hands in the workspace
+
+from worker import table_view  # noqa: E402
+
+
+def test_skin_is_seen_and_the_table_is_not():
+    assert table_view.hands_in(hand_frame())
+    assert not table_view.hands_in(TABLE)
+    for name in FIX.glob("*.jpg"):  # real recorded frames have no hands
+        assert not table_view.hands_in(cv2.imread(str(name))), name.name
+
+
+def test_look_reports_row_and_hands():
+    out = table_view.look(cv2.imread(str(FIX / "ep00_end.jpg")))
+    assert out["order"] == ["purple", "white", "black"] and out["hands"] is False
+
+
+def test_robot_waits_for_a_hand_to_leave_then_carries_on(limits, monkeypatch):
+    monkeypatch.setattr(executors, "HANDS_CLEAR_S", 0.0)
+    ex = make_exec(limits, [[middle(limits)] * 30] * 50, png("ep00_end.jpg"))
+    ex.robot.frames = [TABLE] + [hand_frame()] * 2 + [TABLE] * 3  # hand appears mid-chunk, then leaves
+    said = []
+    ex.say = said.append
+    ex.execute({"instruction": "x", "shuffle": "swap_lr"}, executors.threading.Event())
+    assert ex.hand_pauses == 1
+    assert said == ["I'll wait while your hand is on the table."]
+    assert ex.last_check["handPauses"] == 1
+
+
+def test_robot_never_moves_while_a_hand_stays(limits, monkeypatch):
+    monkeypatch.setattr(executors, "HANDS_MAX_WAIT_S", 0.3)
+    ex = make_exec(limits, [[middle(limits)] * 30] * 50, png("ep00_end.jpg"))
+    ex.robot.frames = [hand_frame()] * 1000
+    with pytest.raises(executors.RobotError) as e:
+        ex.execute({"instruction": "x"}, executors.threading.Event())
+    assert e.value.code == "hands_in_workspace"
+    assert ex.robot.sent == []
+
+
+def test_stop_works_while_waiting_for_a_hand(limits):
+    ex = make_exec(limits, [[middle(limits)] * 30], png("ep00_end.jpg"))
+    ex.robot.frames = [hand_frame()] * 1000
+    stop = executors.threading.Event()
+    stop.set()
+    with pytest.raises(executors.Stopped):
+        ex.execute({"instruction": "x"}, stop)
