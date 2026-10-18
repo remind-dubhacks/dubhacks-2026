@@ -180,6 +180,11 @@ export default function Home() {
   const latestTherapySession = selectedTherapySessions[0];
   const activeAlertCount = alerts.filter((alert) => alert.state !== "Resolved").length;
   const attentionCount = patients.filter((patient) => patient.status !== "Stable").length;
+  const alertFirstPatients = useMemo(() => [...patients].sort((first, second) => {
+    const firstHasAlert = alerts.some((alert) => alert.patientId === first.id && alert.state !== "Resolved");
+    const secondHasAlert = alerts.some((alert) => alert.patientId === second.id && alert.state !== "Resolved");
+    return Number(secondHasAlert) - Number(firstHasAlert);
+  }), [patients, alerts]);
   const displayedPatients = useMemo(() => patients
     .filter((patient) => `${patient.name} ${patient.id} ${patient.room}`.toLowerCase().includes(search.toLowerCase()))
     .filter((patient) => statusFilter === "All statuses" || patient.status === statusFilter)
@@ -367,8 +372,9 @@ export default function Home() {
 
   function renderPatientCard(patient: Patient) {
     const severityAlert = alerts.find((alert) => alert.patientId === patient.id && alert.state !== "Resolved");
+    const needsAttention = patient.status !== "Stable" || Boolean(severityAlert);
     return (
-      <article className={`patient-card ${patient.status === "Critical" ? "card-critical" : ""}`} key={patient.id}>
+      <article className={`patient-card ${needsAttention ? "card-attention" : ""} ${patient.status === "Critical" ? "card-critical" : ""}`} key={patient.id}>
         <button className="feed-button" onClick={() => openPatient(patient.id)} aria-label={`Open monitoring for ${patient.name}`}>
           {patient.connected ? <RoomScene patient={patient} /> : (
             <div className="feed-unavailable">
@@ -479,7 +485,7 @@ export default function Home() {
         {overviewCards.map((card) => <button className={`destination-card ${card.accent}`} key={card.title} onClick={() => navigate(card.view)}><span className="destination-icon"><Icon name={card.icon} size={21} /></span><span className="destination-copy"><strong>{card.title}</strong><small>{card.description}</small><em>{card.count} <Icon name="arrow" size={13} /></em></span></button>)}
       </section>
       <div className="monitoring-section-heading"><div><span className="eyebrow">ROOM OVERVIEW</span><h2>Resident monitoring</h2><p>All room previews are simulated demo feeds.</p></div><button className="button-text" onClick={() => navigate("Live Monitoring")}>Open monitoring <Icon name="arrow" size={14} /></button></div>
-      <div className="patient-grid">{patients.map(renderPatientCard)}</div>
+      <div className="patient-grid">{alertFirstPatients.map(renderPatientCard)}</div>
       <div className="video-footnote"><span className="demo-pill">DEMO</span> Simulated camera previews · Not connected to live cameras.</div>
     </>;
   }
@@ -491,7 +497,7 @@ export default function Home() {
         <span className="facility-status"><i /> 3 of 4 rooms connected</span>
       </div>
       {renderSummary()}
-      <div className="patient-grid monitoring-grid">{patients.map(renderPatientCard)}</div>
+      <div className="patient-grid monitoring-grid">{alertFirstPatients.map(renderPatientCard)}</div>
       <div className="system-notice"><span className="notice-icon"><Icon name="monitor" /></span><div><strong>Room 205 video connection lost</strong><p>Monitoring is paused for this room. AI activity detection is unavailable until the feed reconnects.</p></div><button className="button-secondary" onClick={() => notify("Reconnection requested for Room 205")}>Retry connection</button></div>
     </>;
   }
@@ -605,7 +611,7 @@ export default function Home() {
       <header className="topbar">
         <button className="mobile-menu-button" aria-label="Toggle navigation" onClick={() => setMobileNavOpen(!mobileNavOpen)}><span /><span /><span /></button>
         <button className="sidebar-toggle" aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"} onClick={() => setSidebarCollapsed((collapsed) => !collapsed)}><Icon name="menu" size={18} /></button>
-        <button className="brand" onClick={() => navigate("Overview")} aria-label="ReMind Care home"><span className="brand-symbol"><svg viewBox="0 0 32 30" aria-hidden="true"><path d="M15.5 15.2H4.8C2.2 13.5 2.1 10.8 4 8.8 2.9 6.3 5.1 3.8 8 4.4c1.4-2.7 5.4-3.1 7.5-.8Z" fill="#7890a5" stroke="#fff" strokeWidth="1.3" strokeLinejoin="round" /><path d="M16.5 15.2H27.2c2.6-1.7 2.7-4.4.8-6.4 1.1-2.5-1.1-5-4-4.4-1.4-2.7-5.4-3.1-7.5-.8Z" fill="#55b9c0" stroke="#fff" strokeWidth="1.3" strokeLinejoin="round" /><path d="M4.8 15.2h10.7v11.6c-3.8 2.2-8.1.3-8.5-3.1-3.1-.1-4.4-3.7-2.2-5.8-1.1-.7-1.2-1.8 0-2.7Z" fill="#e88cb0" stroke="#fff" strokeWidth="1.3" strokeLinejoin="round" /><path d="M27.2 15.2H16.5v11.6c3.8 2.2 8.1.3 8.5-3.1 3.1-.1 4.4-3.7 2.2-5.8 1.1-.7 1.2-1.8 0-2.7Z" fill="#f0ce5e" stroke="#fff" strokeWidth="1.3" strokeLinejoin="round" /><path d="M16 3.2v23.9M7.6 9.1c2.2.1 3.1 1.5 2.8 3.2m13.9-3.2c-2.2.1-3.1 1.5-2.8 3.2M8.4 19.3c1.6.2 2.3 1.3 2.2 2.7m13-2.7c-1.6.2-2.3 1.3-2.2 2.7" fill="none" stroke="rgba(255,255,255,.72)" strokeWidth=".85" strokeLinecap="round" /></svg></span><span>Re<span className="brand-light">Mind</span><span className="brand-care"> Care</span></span></button>
+        <button className="brand" onClick={() => navigate("Overview")} aria-label="ReMind Care home"><span className="brand-symbol"><svg viewBox="0 0 32 30" aria-hidden="true"><path d="M15.5 15.2H4.8C2.2 13.5 2.1 10.8 4 8.8 2.9 6.3 5.1 3.8 8 4.4c1.4-2.7 5.4-3.1 7.5-.8Z" fill="#7890a5" stroke="#fff" strokeWidth="1.3" strokeLinejoin="round" /><path d="M16.5 15.2H27.2c2.6-1.7 2.7-4.4.8-6.4 1.1-2.5-1.1-5-4-4.4-1.4-2.7-5.4-3.1-7.5-.8Z" fill="#55b9c0" stroke="#fff" strokeWidth="1.3" strokeLinejoin="round" /><path d="M4.8 15.2h10.7v11.6c-3.8 2.2-8.1.3-8.5-3.1-3.1-.1-4.4-3.7-2.2-5.8-1.1-.7-1.2-1.8 0-2.7Z" fill="#e88cb0" stroke="#fff" strokeWidth="1.3" strokeLinejoin="round" /><path d="M27.2 15.2H16.5v11.6c3.8 2.2 8.1.3 8.5-3.1 3.1-.1 4.4-3.7 2.2-5.8 1.1-.7 1.2-1.8 0-2.7Z" fill="#ed704b" stroke="#fff" strokeWidth="1.3" strokeLinejoin="round" /><path d="M16 3.2v23.9M7.6 9.1c2.2.1 3.1 1.5 2.8 3.2m13.9-3.2c-2.2.1-3.1 1.5-2.8 3.2M8.4 19.3c1.6.2 2.3 1.3 2.2 2.7m13-2.7c-1.6.2-2.3 1.3-2.2 2.7" fill="none" stroke="rgba(255,255,255,.72)" strokeWidth=".85" strokeLinecap="round" /></svg></span><span>Re<span className="brand-light">Mind</span><span className="brand-care"> Care</span></span></button>
         <div className="topbar-right"><button className="topbar-action live-action" onClick={() => navigate("Live Monitoring")}><Icon name="camera" size={15} /> View Live Rooms</button><button className="topbar-action history-action" onClick={() => { setSelectedId(patients[0].id); navigate("Patient History"); }}><Icon name="clock" size={15} /> Resident History</button><span className="top-facility-status"><i />Facility online</span><button className="notification-button" aria-label={`${activeAlertCount} open notifications`} onClick={() => setBellOpen(!bellOpen)}><Icon name="bell" size={18} />{activeAlertCount > 0 && <span>{activeAlertCount}</span>}</button><button className="profile-button" onClick={() => navigate("Settings")}><span className="profile-avatar">SM</span><span className="profile-text"><strong>Sarah Morgan</strong><small>Caregiver</small></span><Icon name="chevron" size={14} /></button></div>
         {bellOpen && <div className="notification-popover"><div className="popover-heading"><strong>Recent alerts</strong><button className="button-text compact" onClick={() => navigate("Alerts")}>View all</button></div>{alerts.filter((alert) => alert.state !== "Resolved").slice(0, 3).map((alert) => { const patient = patients.find((item) => item.id === alert.patientId)!; return <button className="popover-alert" key={alert.id} onClick={() => openPatient(patient.id, alert.id)}><span className={`popover-dot ${alert.severity.toLowerCase()}`} /><span><strong>{alert.title}</strong><small>{patient.name} · Room {patient.room} · {alert.time}</small></span></button>; })}</div>}
       </header>

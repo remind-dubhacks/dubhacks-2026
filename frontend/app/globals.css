@@ -1545,22 +1545,22 @@ pre.tool { white-space: pre-wrap; word-break: break-word; font-size: 14px; backg
   .station .therapy-resident-select select { width: 100%; max-width: 235px; }
 }
 
-/* Sunny yellow adds warmth as a small brand accent without changing alert severity. */
+/* Soft orange adds warmth without changing alert severity colors. */
 .station {
-  --remind-yellow: #f4c542;
-  --remind-yellow-soft: #fff7dd;
-  --remind-yellow-ink: #795d12;
+  --remind-orange: #ed704b;
+  --remind-orange-soft: #ffe1d6;
+  --remind-orange-ink: #963e2b;
 }
-.station .brand-symbol i:nth-child(4) { background: var(--remind-yellow); }
-.station .nav-item.selected { box-shadow: inset 3px 0 var(--remind-yellow); }
+.station .brand-symbol i:nth-child(4) { background: var(--remind-orange); }
+.station .nav-item.selected { box-shadow: inset 3px 0 var(--remind-orange); }
 .station .destination-card.blue {
-  border-top: 2px solid var(--remind-yellow);
+  border-top: 2px solid var(--remind-orange);
 }
 .station .destination-card.blue .destination-icon {
-  background: var(--remind-yellow-soft);
-  color: var(--remind-yellow-ink);
+  background: var(--remind-orange-soft);
+  color: var(--remind-orange-ink);
 }
-.station .destination-card.blue .destination-copy em { color: var(--remind-yellow-ink); }
+.station .destination-card.blue .destination-copy em { color: var(--remind-orange-ink); }
 .station .destination-card.blue .destination-copy em svg { color: #d3a422; }
 .station .sequence-illustration::after {
   width: 12px;
@@ -1570,11 +1570,11 @@ pre.tool { white-space: pre-wrap; word-break: break-word; font-size: 14px; backg
   left: calc(50% - 6px);
   border: 3px solid #fff;
   border-radius: 50%;
-  background: var(--remind-yellow);
+  background: var(--remind-orange);
   box-shadow: 0 2px 8px rgba(121,93,18,.2);
   content: "";
 }
-.station .sequence-center { border-color: #f2e6bc; }
+.station .sequence-center { border-color: #edc18e; }
 
 .voice h1 { margin-bottom: 4px; }
 button.start { width: 100%; min-height: 110px; font-size: 2rem; margin: 16px 0; }
@@ -1664,10 +1664,10 @@ button.huge { font-size: 1.8rem; padding: 22px 48px; min-width: 200px; }
 .rec-lineup.end.focus .badge { background: #2f6b4f; color: #fff; font-size: 1.15rem; padding: 6px 14px; }
 .rec-hint { font-size: 1.2rem; margin-top: 8px; opacity: 0.95; }
 
-/* Light lavender is the dashboard canvas; soft yellow is reserved for icons. */
+/* White dashboard canvas with a soft coral-orange accent palette. */
 .station {
   --care-bg: #ffffff;
-  --care-yellow: #fff2b8;
+  --care-orange: #ffe1d6;
   background: var(--care-bg);
 }
 .station .station-main { background: #ffffff; }
@@ -1675,17 +1675,17 @@ button.huge { font-size: 1.8rem; padding: 22px 48px; min-width: 200px; }
 .station .dashboard-welcome { margin-bottom: 14px; }
 .station .overview-main .destination-card,
 .station .overview-main .patient-card {
-  border-color: #f0e8bd;
-  background: #fff9df;
+  border-color: #e9a089;
+  background: #ffe1d6;
   box-shadow: 0 2px 7px rgba(76,48,135,.08);
 }
 .station .overview-main .destination-card {
-  border-color: #f0e8bd;
-  background: #fff9df;
+  border-color: #e9a089;
+  background: #ffe1d6;
 }
 .station .overview-main .destination-card:hover {
-  border-color: #e9dda5;
-  background: #fff5c9;
+  border-color: #d87a5e;
+  background: #ffc6b2;
   box-shadow: 0 7px 20px rgba(126,97,22,.13);
 }
 .station .overview-main .destination-icon {
@@ -1693,7 +1693,7 @@ button.huge { font-size: 1.8rem; padding: 22px 48px; min-width: 200px; }
   color: #607c91;
 }
 .station .overview-main .destination-card .destination-copy em { color: #607c91; }
-.station .overview-main .patient-card .feed-button { border-color: #f0e8bd; }
+.station .overview-main .patient-card .feed-button { border-color: #e9a089; }
 
 /* Swap the saturated purple accent for a softer slate blue that suits both pastels. */
 .station {
@@ -1752,10 +1752,10 @@ button.huge { font-size: 1.8rem; padding: 22px 48px; min-width: 200px; }
 .station .quick-live { background: linear-gradient(115deg, #49677f, #718ba0); }
 .station .overview-main .destination-card,
 .station .overview-main .patient-card {
-  border-color: #e5d88f;
-  background: #fff5cc;
+  border-color: #e58d70;
+  background: #ffd9cc;
 }
-.station .overview-main .destination-card:hover { border-color: #d4c36e; background: #ffefb3; }
+.station .overview-main .destination-card:hover { border-color: #d56a4b; background: #ffc3ad; }
 .station .overview-main .destination-copy small,
 .station .monitoring-section-heading p,
 .station .page-title-row p,
@@ -1788,7 +1788,7 @@ button.huge { font-size: 1.8rem; padding: 22px 48px; min-width: 200px; }
 .station .chart-legend i,
 .station .chart-legend .legend-therapy { background: #405b72; }
 .station .overview-main .destination-card,
-.station .overview-main .patient-card { border-color: #d8c66c; }
+.station .overview-main .patient-card { border-color: #d9795d; }
 .station .overview-main .destination-copy small,
 .station .monitoring-section-heading p,
 .station .page-title-row p,
@@ -1799,3 +1799,66 @@ button.huge { font-size: 1.8rem; padding: 22px 48px; min-width: 200px; }
 .station .patient-identity > span,
 .station .activity-line time,
 .station .video-footnote { color: #536170; }
+
+.station .overview-main .destination-card,
+.station .overview-main .patient-card { transition: background-color .16s ease, border-color .16s ease, box-shadow .16s ease, transform .16s ease; }
+.station .overview-main .destination-card:hover,
+.station .overview-main .patient-card:hover {
+  border-color: #405b72;
+  background: #49677f;
+  color: #fff;
+  box-shadow: 0 7px 18px rgba(49,75,96,.2);
+}
+.station .overview-main .destination-card:hover .destination-icon {
+  background: #ffe1d6;
+  color: #344b60;
+}
+.station .overview-main .destination-card:hover .destination-copy strong,
+.station .overview-main .destination-card:hover .destination-copy small,
+.station .overview-main .destination-card:hover .destination-copy em { color: #fff; }
+.station .overview-main .patient-card:hover .patient-card-body {
+  background: #49677f;
+  color: #fff;
+}
+.station .overview-main .patient-card:hover .patient-identity strong,
+.station .overview-main .patient-card:hover .patient-identity > span,
+.station .overview-main .patient-card:hover .activity-line,
+.station .overview-main .patient-card:hover .activity-line time { color: #fff; }
+.station .overview-main .patient-card:hover .activity-line { border-color: rgba(255,255,255,.32); }
+.station .overview-main .patient-card:hover .button-text { color: #fff; }
+.station .overview-main .patient-card:hover .button-primary {
+  border-color: #ffe1d6;
+  background: #ffe1d6;
+  color: #344b60;
+}
+.station .overview-main .patient-card:hover .button-primary:hover { background: #ffc3ad; }
+
+.station .station-main p,
+.station .station-main small,
+.station .station-main time,
+.station .station-main .eyebrow,
+.station .station-footer { color: #46515e; }
+
+.station .overview-main .patient-card {
+  border-color: #e5e8e6;
+  background: #f7f8f7;
+}
+.station .overview-main .patient-card .feed-button { border-color: #e5e8e6; }
+.station .overview-main .patient-card.card-attention {
+  border-color: #e4c4c2;
+  background: #f7e8e6;
+}
+.station .overview-main .patient-card.card-attention .feed-button { border-color: #e4c4c2; }
+.station .monitoring-grid .patient-card {
+  border-color: #e5e8e6;
+  background: #f7f8f7;
+}
+.station .monitoring-grid .patient-card.card-attention {
+  border-color: #e4c4c2;
+  background: #f7e8e6;
+}
+.station .monitoring-grid .patient-card.card-attention .feed-button { border-color: #e4c4c2; }
+.station .overview-main .patient-card:hover {
+  border-color: #405b72;
+  background: #49677f;
+}
