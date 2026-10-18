@@ -17,11 +17,10 @@ import cv2
 import numpy as np
 
 RANGES: dict[str, list[tuple[tuple[int, int, int], tuple[int, int, int]]]] = {
-    "black": [((0, 0, 0), (179, 255, 55))],
-    "white": [((18, 22, 85), (36, 90, 200))],
-    # 108-145: the purple block on the white table. 95-107 with real saturation: the same block under cooler
-    # light on the wooden table (the wood there sits at a similar hue but saturation under 25).
-    "purple": [((108, 25, 50), (145, 255, 230)), ((95, 50, 60), (107, 255, 230))],
+    # Wide enough for the camera's auto white balance (cream keycap read H 18-54, purple H 102-145).
+    "black": [((0, 0, 0), (179, 255, 72))],
+    "white": [((15, 15, 70), (65, 95, 215))],
+    "purple": [((95, 25, 50), (150, 255, 235))],
 }
 MIN_AREA = 250  # pixels at 640 px wide
 UNION = {"purple"}
@@ -45,6 +44,11 @@ def _find(frame_bgr: np.ndarray) -> dict[str, tuple[float, int, float]]:
     h, w = frame_bgr.shape[:2]
     img = cv2.resize(frame_bgr, (640, int(h * 640 / w))) if w != 640 else frame_bgr
     hsv = cv2.cvtColor(cv2.GaussianBlur(img, (5, 5), 0), cv2.COLOR_BGR2HSV)
+    # The table fills most of the frame: drop pixels close to its median colour so a white or wood
+    # tabletop is never mistaken for a keycap.
+    med = np.median(hsv.reshape(-1, 3), axis=0)
+    table = (np.abs(hsv[..., 1].astype(np.int16) - int(med[1])) <= 12) & (np.abs(hsv[..., 2].astype(np.int16) - int(med[2])) <= 30)
+    hsv[table] = (60, 255, 255)  # pure green: outside every keyring range
     k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
     out: dict[str, tuple[float, int, float]] = {}
     # Where the purple block is (dilated): its pale, bluish sides must never count as the white keycap.
