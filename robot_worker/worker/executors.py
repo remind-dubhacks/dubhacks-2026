@@ -323,6 +323,16 @@ class ScriptedExecutor:
         except Exception:  # noqa: BLE001
             return None
 
+    @staticmethod
+    def _search_offsets(data: dict, slot: int) -> list[float]:
+        """Where to feel for a missed keyring: inside the middle 50% of the pans the human demos
+        grasped at for this slot (poses.json demo_ranges), else the fixed PICK_SEARCH_DEG list."""
+        iqr = ((data.get("demo_ranges") or {}).get(str(slot)) or {}).get("iqr", {}).get("shoulder_pan.pos")
+        if not iqr:
+            return SEARCH_OFFSETS_DEG
+        h = round(max(1.0, (iqr[1] - iqr[0]) / 2), 2)
+        return [0.0, h, -h, 2 * h, -2 * h]
+
     def _holding(self) -> bool:
         """The follower's gripper reading tells a keyring from nothing: ~19-23 on a keycap, ~11 empty."""
         from .motion_guard import HOLD_LO
@@ -407,7 +417,7 @@ class ScriptedExecutor:
                 # little to each side (the camera can't see slot 4, where keyrings shift on release).
                 # Lift between tries so a miss never drags the keyring; stop before placing if all fail.
                 found = False
-                for off in SEARCH_OFFSETS_DEG:
+                for off in self._search_offsets(data, a):
                     grip(GRIP_OPEN, 0.2)
                     move(above)
                     a2 = {**above, "shoulder_pan.pos": above["shoulder_pan.pos"] + off}

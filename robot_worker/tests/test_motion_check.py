@@ -732,3 +732,10 @@ def test_hybrid_never_guesses_when_the_camera_cannot_see_all_three(limits, monke
     monkeypatch.setattr(executors.ScriptedExecutor, "execute", lambda *a: pytest.fail("must not run"))
     ex.execute({"instruction": "x", "shuffle": "swap_lr"}, executors.threading.Event())
     assert ex.last_check["verdict"] == "unsure" and ex.last_check["mode"] == "ai"
+
+
+
+def test_search_follows_the_demo_grasp_spread():
+    data = {"demo_ranges": {"4": {"iqr": {"shoulder_pan.pos": [31.7, 34.7]}}}}
+    assert executors.ScriptedExecutor._search_offsets(data, 4) == [0.0, 1.5, -1.5, 3.0, -3.0]
+    assert executors.ScriptedExecutor._search_offsets({}, 4) == executors.SEARCH_OFFSETS_DEG
