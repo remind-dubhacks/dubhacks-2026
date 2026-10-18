@@ -1,5 +1,6 @@
 """Tool-calling loop. With an LLM key the model picks tools; without one a small rule-based parser
 picks the same tools, so the prototype works offline. 'stop' is always handled before the model."""
+import asyncio
 import json
 import logging
 import re
@@ -19,7 +20,7 @@ log = logging.getLogger("remind.voice")
 SYSTEM = """You are ReMind, a warm, patient companion for a person living with dementia, in a care home. A caregiver is supervising.
 You talk by voice, so reply in one or two SHORT, simple sentences. Never shame, quiz or correct personal memories. No medical advice.
 You run games by calling tools. Never claim the robot did something unless a tool result says so.
-- When the person asks to play a game, call start_game, then tell them the target order (from the tool result) and to say "done" when finished.
+- When the person asks to play a game, call start_game, then tell them the RIGHT order to put the objects in (target_order from the tool result; never call it the starting order) and to say "done" when finished.
 - When they say they are done, call check_arrangement. If wrong, say kindly it is not quite right and explain using the tool's reason, then invite another try. If attempts_left is 0, gently reveal the correct order. If correct, praise them.
 - If they ask for help or seem upset, call alert_caregiver and reassure them.
 - If they ask what games exist, call list_games.
@@ -73,20 +74,29 @@ def provider() -> str:
 
 
 async def _gemini(contents: list[dict], system: str) -> dict:
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{settings.gemini_model}:generateContent"
+    """Try the main model, then the fallback, when Google is busy (503) or the free tier is throttled (429)."""
+    body = {
+        "systemInstruction": {"parts": [{"text": system}]},
+        "contents": contents,
+        "tools": [{"functionDeclarations": GEMINI_DECLS}],
+        "toolConfig": {"functionCallingConfig": {"mode": "AUTO"}},
+    }
+    last: httpx.Response | None = None
     async with httpx.AsyncClient(timeout=20) as client:
-        r = await client.post(
-            url,
-            headers={"x-goog-api-key": settings.gemini_api_key},
-            json={
-                "systemInstruction": {"parts": [{"text": system}]},
-                "contents": contents,
-                "tools": [{"functionDeclarations": GEMINI_DECLS}],
-                "toolConfig": {"functionCallingConfig": {"mode": "AUTO"}},
-            },
-        )
-        r.raise_for_status()
-        return r.json()["candidates"][0]["content"]
+        for model in dict.fromkeys([settings.gemini_model, settings.gemini_fallback_model]):
+            for attempt in range(2):
+                last = await client.post(
+                    f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+                    headers={"x-goog-api-key": settings.gemini_api_key},
+                    json=body,
+                )
+                if last.status_code not in (429, 503):
+                    last.raise_for_status()
+                    return last.json()["candidates"][0]["content"]
+                await asyncio.sleep(0.7)
+    assert last is not None
+    last.raise_for_status()
+    raise RuntimeError("Gemini unavailable")
 
 
 async def _gemini_turn(state: GameState, history: list[dict], text: str, table_order: list[str] | None) -> tuple[str, list[dict]] | None:
