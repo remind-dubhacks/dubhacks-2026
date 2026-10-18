@@ -103,8 +103,10 @@ class SO101:
     # ----- scripted control -----
 
     def joints(self) -> dict[str, float]:
-        obs = self.robot.get_observation()
-        return {j: float(obs[j]) for j in JOINTS}
+        """Motor positions straight from the bus: a slow or dropped camera frame must never stop
+        the arm (get_observation() would read every camera too)."""
+        pos = self.robot.bus.sync_read("Present_Position")
+        return {j: float(pos[j.removesuffix(".pos")]) for j in JOINTS}
 
     def torque(self, on: bool) -> None:
         bus = self.robot.bus
