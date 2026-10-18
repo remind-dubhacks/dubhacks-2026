@@ -304,7 +304,8 @@ class ScriptedExecutor:
         from .motion_guard import HOLD_LO
 
         try:
-            return self.robot.joints()["gripper.pos"] >= HOLD_LO
+            self._last_grip = round(self.robot.joints()["gripper.pos"], 1)
+            return self._last_grip >= HOLD_LO
         except Exception:  # noqa: BLE001
             return True  # can't read it: don't block the move (the camera checks the result)
 
@@ -380,7 +381,7 @@ class ScriptedExecutor:
                     grip(GRIP_OPEN, 0.3)
                     move(above)
                     move(poses["home"])
-                    raise RobotError("grasp_missed", f"could not pick the {obj} from slot {a}")
+                    raise RobotError("grasp_missed", f"could not pick the {obj} from slot {a} (gripper read {getattr(self, '_last_grip', '?')}, holding needs >= 15.5)")
             move(above)
             # Travel high: a straight joint-space move between two low "above" poses dips toward the
             # table mid-way and knocked keyrings over in the first arm tests.
