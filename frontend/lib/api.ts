@@ -40,6 +40,7 @@ export type Participant = {
   interestTags: string[];
   consentFlags: { sessionConsent: boolean; rememberPreferences: boolean };
   preferences?: { favoriteObjectId?: string };
+  careProfile?: { preferredName?: string; interests?: string[]; pace?: "normal" | "slow"; speech?: string[] };
 };
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {

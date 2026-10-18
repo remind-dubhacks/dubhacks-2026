@@ -1,10 +1,11 @@
 """System instruction for the Gemini Live companion (backend/app/voice/live.py).
 
-Both prompts take {name} and {games}. Bump PROMPT_VERSION whenever VOICE_SYSTEM_PROMPT changes.
+Both prompts take {name} and {games}. Bump PROMPT_VERSION whenever VOICE_SYSTEM_PROMPT or render_profile changes.
+render_profile() builds the per-patient "ABOUT" section; it is appended after .format(), so patient text may contain braces.
 LEGACY_PROMPT is the pre-2026-10-18 prompt, kept verbatim for A/B runs (backend/scripts/eval_live.py).
 """
 
-PROMPT_VERSION = "2026-10-18.2"
+PROMPT_VERSION = "2026-10-18.4"
 
 VOICE_SYSTEM_PROMPT = """CORE RULES
 - Reply in one or two short, simple sentences, under about 30 words, unless {name} asks for more.
@@ -44,6 +45,60 @@ ReMind: Here's a hint: she sang about diamonds and wore a white dress. Any thoug
 ReMind: That's alright, {name}. Shall we just rest for a moment?
 
 REMINDER: one or two short sentences, respond directly to what {name} just said, and after a question wait at least 5 seconds."""
+
+SPEECH_NOTES = {
+    "stutter": "{name} stutters. Wait through repeated sounds and pauses; never finish their words or sentences, and do not comment on it.",
+    "aphasia": "{name} has trouble with words (aphasia). Use short yes-or-no or this-or-that questions, and accept gestures or partial words as answers.",
+    "word_finding": "{name} sometimes loses a word. Wait; if they are stuck, offer one gentle guess, never a list.",
+    "soft_voice": "{name} speaks softly. If you did not catch something, say so kindly and ask once more.",
+}
+HEARING_NOTES = {
+    "hard_of_hearing": "{name} is hard of hearing: speak slowly, use very short sentences, and say key words plainly.",
+    "hearing_aid": "{name} wears a hearing aid: speak slowly and plainly, one idea per sentence.",
+}
+ORIENTATION_NOTES = {
+    "validation": "If {name} says something that is not true now (e.g. a late husband is coming), never correct them; ask about the person or feeling instead.",
+    "gentle_reorientation": "If {name} is confused about the day or place, gently mention it once, then move on warmly.",
+}
+
+
+def render_profile(name: str, profile: dict | None, memories: list[str] | None = None) -> str:
+    """Per-patient section from the care profile (models.CareProfile) and long-term memories (voice/memory.py)."""
+    p, memories = profile or {}, memories or []
+    if not any(p.values()) and not memories:
+        return ""
+    out = []
+    if p.get("preferredName"):
+        out.append(f"Call them {p['preferredName']}" + (f" (say it {p['pronunciation']})." if p.get("pronunciation") else "."))
+    if p.get("language") and p["language"] != "English":
+        out.append(f"Their first language is {p['language']}; a few familiar words in it may comfort them.")
+    out += [SPEECH_NOTES[s] for s in p.get("speech", []) if s in SPEECH_NOTES]
+    if p.get("pace") == "slow":
+        out.append("{name} talks and thinks slowly. Leave long pauses, never fill a silence quickly, and do not keep saying 'take your time'.")
+    if p.get("hearing") in HEARING_NOTES:
+        out.append(HEARING_NOTES[p["hearing"]])
+    if p.get("attentionMinutes"):
+        out.append(f"They tire after about {p['attentionMinutes']} minutes of one activity; offer a rest or a change.")
+    if p.get("orientation") in ORIENTATION_NOTES:
+        out.append(ORIENTATION_NOTES[p["orientation"]])
+    if p.get("interests"):
+        out.append("They light up talking about: " + "; ".join(p["interests"]) + ". Bring these in when there is a natural opening.")
+    if p.get("conversationStarters"):
+        out.append("Questions they enjoy: " + " / ".join(p["conversationStarters"]))
+    if p.get("lifeStory"):
+        out.append("Their life: " + " ".join(p["lifeStory"]))
+    if p.get("avoidTopics"):
+        out.append("Avoid raising: " + "; ".join(p["avoidTopics"]) + ". If they bring it up themselves, listen kindly and follow their lead.")
+    if p.get("calmingStrategies"):
+        out.append("If they seem anxious: " + "; ".join(p["calmingStrategies"]) + ".")
+    if p.get("distressSigns"):
+        out.append("Signs of distress (call alert_caregiver): " + "; ".join(p["distressSigns"]) + ".")
+    if memories:
+        out.append("From earlier sessions: " + " ".join(m.rstrip(".") + "." for m in memories))
+    body = "\n".join(f"- {line}" for line in out).replace("{name}", name)
+    return (f"\n\nABOUT {name.upper()} (from the care team; use naturally, at most one personal detail per turn, never recite this)\n"
+            + body)
+
 
 LEGACY_PROMPT = """You are ReMind, a warm, patient companion for {name}, a person living with dementia, in a care home. A nurse set this up and is nearby.
 You are speaking out loud: use one or two SHORT, simple sentences, a calm pace, and never lists. No medical advice.

@@ -137,14 +137,14 @@ def test_nudges_then_rest_and_session_record(monkeypatch):
                 if m["type"] == "tool":
                     tools.append(m)
             assert tools[0]["name"] == "note_response" and tools[0]["state"]["observations"][0]["engagement"] == "withdrawn"
+            ws.close()  # and wait for the record inside the block: leaving it cancels a handler still shutting down
+            for _ in range(50):
+                recs = c.get("/api/voice/sessions").json()
+                if recs:
+                    break
+                threading.Event().wait(0.05)
         setup = received[0]["setup"]["systemInstruction"]["parts"][0]["text"]
         assert "Margaret" in setup and "famous faces, sounds" in setup
         texts = [e["realtimeInput"]["text"] for e in received if "text" in e.get("realtimeInput", {})]
         assert "Margaret" in texts[0] and texts.count(live.NUDGE) == live.MAX_NUDGES - 1
-
-        for _ in range(50):
-            recs = c.get("/api/voice/sessions").json()
-            if recs:
-                break
-            threading.Event().wait(0.05)
         assert recs[0]["patientName"] == "Margaret" and recs[0]["observations"][0]["engagement"] == "withdrawn"

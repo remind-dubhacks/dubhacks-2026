@@ -3,7 +3,9 @@
 // Nurse-facing setup, shown before a session and again on Esc. The Start click is also the browser
 // gesture that allows the microphone and sound playback. Styled as the "device faceplate" from the
 // Calm design handoff (Nurse Setup.dc.html).
+// Picking a resident sends their participantId, so the companion uses their care profile and memories.
 import { useEffect, useState } from "react";
+import { api, type Participant } from "@/lib/api";
 
 const GAMES = [
   { id: "faces", label: "Famous faces", on: true, icon: "M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18Z M8.5 14.5c1 1.3 2.2 2 3.5 2s2.5-.7 3.5-2 M9 9.5h.01 M15 9.5h.01" },
@@ -20,10 +22,12 @@ type Props = {
   live: boolean;
   connecting: boolean;
   error: string | null;
-  onStart: (name: string, games: string[]) => void;
+  onStart: (name: string, games: string[], participantId?: string) => void;
   onEnd: () => void;
   onHide: () => void;
 };
+
+const displayName = (p: Participant) => p.careProfile?.preferredName || p.alias;
 
 function Header() {
   return (
@@ -40,20 +44,33 @@ function Header() {
 export function SetupCard({ live, connecting, error, onStart, onEnd, onHide }: Props) {
   const [name, setName] = useState("");
   const [games, setGames] = useState<string[]>(GAMES.filter((g) => g.on && available(g.id)).map((g) => g.id));
+  const [residents, setResidents] = useState<Participant[]>([]);
+  const [participantId, setParticipantId] = useState("");
 
   useEffect(() => {
     try {
       const s = JSON.parse(localStorage.getItem(SAVED) ?? "null");
       if (s?.name) setName(s.name);
       if (Array.isArray(s?.games)) setGames(s.games.filter(available));
+      if (s?.participantId) setParticipantId(s.participantId);
     } catch { /* ignore */ }
+    api.participants().then(setResidents).catch(() => setResidents([]));
   }, []);
+
+  const resident = residents.find((p) => p._id === participantId);
+
+  function pick(id: string) {
+    setParticipantId(id);
+    const p = residents.find((r) => r._id === id);
+    if (p) setName(displayName(p));
+  }
 
   function start(e: React.FormEvent) {
     e.preventDefault();
     const chosen = games.filter(available);
-    try { localStorage.setItem(SAVED, JSON.stringify({ name, games: chosen })); } catch { /* ignore */ }
-    onStart(name.trim(), chosen);
+    const pid = resident ? participantId : "";
+    try { localStorage.setItem(SAVED, JSON.stringify({ name, games: chosen, participantId: pid })); } catch { /* ignore */ }
+    onStart(name.trim(), chosen, pid || undefined);
   }
 
   const toggle = (id: string) => setGames((gs) => (gs.includes(id) ? gs.filter((g) => g !== id) : [...gs, id]));
@@ -81,6 +98,22 @@ export function SetupCard({ live, connecting, error, onStart, onEnd, onHide }: P
     <div className="calm-setup">
       <form className="face" onSubmit={start}>
         <Header />
+        {residents.length > 0 && (
+          <label className="field">
+            <span>Resident</span>
+            <div className="field-well">
+              <select value={resident ? participantId : ""} onChange={(e) => pick(e.target.value)}>
+                <option value="">Someone else (name only)</option>
+                {residents.map((p) => <option key={p._id} value={p._id}>{displayName(p)}</option>)}
+              </select>
+            </div>
+            {resident?.careProfile?.interests?.length ? (
+              <span className="field-note">
+                Using {displayName(resident)}&apos;s care profile: likes {resident.careProfile.interests[0]}.
+              </span>
+            ) : null}
+          </label>
+        )}
         <label className="field">
           <span>Patient&apos;s first name</span>
           <div className="field-well">

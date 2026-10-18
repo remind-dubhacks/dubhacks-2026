@@ -56,6 +56,8 @@ Routes in `frontend/app/` are thin. The code lives in feature folders:
 Everything runs out of the box with a mock robot and in-memory storage. For the real setup, copy `.env.example` to `backend/.env` and `robot_worker/.env` and fill in:
 - `MONGODB_URI` to persist data, including the session summaries on the nurse screen
 - `GEMINI_API_KEY` (brain, free tier) and `ELEVENLABS_API_KEY` (spoken replies) for the voice agent
+- `BACKBOARD_API_KEY` to route the voice call through [Backboard](https://docs.backboard.io) Realtime (Gemini Live via Backboard), which keeps long-term memory per patient automatically. Realtime audio needs **paid Backboard credits**; the free starter credit is refused with `insufficient_credits`. If Backboard refuses and `GEMINI_API_KEY` is set, sessions fall back to Gemini directly (care profile and existing memories still used, nothing new saved). Force a transport with `VOICE_TRANSPORT=backboard|gemini`; compare latency with `uv run python -m scripts.eval_live --latency gemini|backboard`.
+- Pick a resident on the setup card and the companion uses their care profile (`careProfile` on the participant, edited with `PUT /api/participants/{id}/care-profile`): pacing for slow or stuttering speech, interests, topics to avoid. What it remembers: `GET /api/participants/{id}/memories`. Use synthetic data only: the care profile and, through Backboard, the conversation are sent to Gemini and Backboard.
 - `ROBOT_MODE=perceptron` plus the Perceptron, SO-101 and camera settings, and run `uv sync --extra hardware` on the robot laptop
 
 Backend tests: `cd backend && uv run pytest`
