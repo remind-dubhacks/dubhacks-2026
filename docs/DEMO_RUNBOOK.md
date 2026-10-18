@@ -55,4 +55,4 @@ Mỗi lần chạy mất khoảng 1–2 phút. Sau khi chạy, script in **RESUL
 ## Chưa ổn định (đừng demo)
 
 - **swap_mr, rot_left, rot_right:** đều dùng ô 4 làm chỗ đậu tạm, và robot hay gắp hụt ở ô 4 (camera không nhìn thấy ô 4). Đang sửa.
-- **Mô hình AI (v1, v2, mỗi cái 1000 bước):** cánh tay di chuyển êm và an toàn, nhưng chưa gắp được. Để giới hạn robot chỉ chạy 2 kiểu đã kiểm chứng, đặt `ROBOT_SHUFFLES=swap_lr,swap_lm` trong `robot_worker/.env` rồi khởi động lại worker.
+- **Mô hình AI (v1, v2, mỗi cái 1000 bước):** cánh tay di chuyển êm và an toàn (không lệnh nào vượt giới hạn khớp), nhưng chưa gắp được. v2 còn **gạt móc khóa lệch khỏi chỗ** (thử lúc 06:00). Vì vậy chế độ kết hợp (AI thử trước, kịch bản hoàn thành; `HYBRID_SCRIPTED=1` với `ROBOT_MODE=perceptron`) đang **tắt**: sau khi AI thử, kịch bản không gắp được nữa. Cần huấn luyện lâu hơn (10.000 bước) và thêm dữ liệu. Để giới hạn robot chỉ chạy 2 kiểu đã kiểm chứng, đặt `ROBOT_SHUFFLES=swap_lr,swap_lm` trong `robot_worker/.env` rồi khởi động lại worker.
