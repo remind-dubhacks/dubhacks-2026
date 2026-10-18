@@ -1,5 +1,5 @@
-/* Nurse dashboard (Nurse Dashboard mockup): flat Calm surfaces in a stone palette, solid trays and keys with a
-   single soft shadow, and a rose urgent panel. Scoped under .nurse so the caregiver styles in globals.css don't leak in. */
+/* Nurse dashboard (Nurse Dashboard mockup): flat Calm panels in a stone palette, with the same raised, tactile
+   keys as the patient setup faceplate, on flat trays, and a rose urgent panel. Scoped under .nurse so the caregiver styles in globals.css don't leak in. */
 
 .nurse {
   --ink: #1e2b26;
@@ -9,15 +9,17 @@
   --font: "Atkinson Hyperlegible Next", system-ui, sans-serif;
   --face: #f3f5f0;
   --well: #e6e9e3;
-  --field-well: #e6e9e3;
+  --field-well: linear-gradient(180deg, #cdd2c8 0%, #f5f7f2 100%);
   --field: #f8f9f5;
-  --key-on: #4c8a68;
-  --key-off: #e4e7e1;
-  --primary: #3d7457;
+  --key-on: linear-gradient(180deg, #5a9a76 0%, #3d7457 100%);
+  --key-off: linear-gradient(180deg, #d9dcd6 0%, #b9beb6 100%);
+  --key-face: linear-gradient(180deg, #f8f9f5 0%, #e6e9e2 100%);
+  --primary: linear-gradient(180deg, #4c8a68 0%, #2f6248 100%);
   --red: #d9503a;
-  --red-key: #b9432f;
-  --raised: 0 1px 2px rgba(30, 43, 38, 0.10);
-  --pressed: none;
+  --red-key: linear-gradient(180deg, #cf5a44 0%, #a63a28 100%);
+  /* Light keys and coloured keys, as .key and .key[aria-pressed] on the patient faceplate. */
+  --raised: inset 0 1px 0 rgba(255, 255, 255, 0.8), inset 0 -2px 0 rgba(0, 0, 0, 0.1), 0 2px 3px rgba(30, 43, 38, 0.3);
+  --raised-on: inset 0 1px 0 rgba(255, 255, 255, 0.3), inset 0 -3px 0 rgba(0, 0, 0, 0.15), 0 2px 4px rgba(30, 43, 38, 0.3);
 
   min-height: 100dvh;
   box-sizing: border-box;
@@ -50,6 +52,7 @@
   font-weight: 600;
   color: var(--ink-label);
   text-decoration: none;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.6);
   background: var(--key-off);
   box-shadow: var(--raised);
 }
@@ -68,9 +71,9 @@
 .nurse .key { padding: 14px 26px; border-radius: 16px; font-weight: 600; font-size: 20px; box-shadow: var(--raised); }
 .nurse .key:active:not(:disabled) { transform: translateY(1px); }
 .nurse .key:disabled { opacity: 0.45; cursor: not-allowed; }
-.nurse .key-red { background: var(--red-key); color: #fff; box-shadow: var(--raised); }
-.nurse .key-grey { background: var(--key-off); color: var(--ink-label); }
-.nurse .key-pine { background: var(--primary); color: #fff; box-shadow: var(--raised); }
+.nurse .key-red { background: var(--red-key); color: #fff; text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.25); box-shadow: var(--raised-on); }
+.nurse .key-grey { background: var(--key-off); color: var(--ink-label); text-shadow: 0 1px 0 rgba(255, 255, 255, 0.6); }
+.nurse .key-pine { background: var(--primary); color: #fff; text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.25); box-shadow: var(--raised-on); }
 
 /* Urgent */
 .urgent {
@@ -104,7 +107,8 @@
 .strip-track { flex: 1; display: flex; gap: 8px; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; padding: 2px 0 8px; margin-bottom: -6px; }
 .strip-track::-webkit-scrollbar { display: none; }
 .strip-none { align-self: center; padding: 0 16px; color: var(--ink-muted); }
-.nurse .strip-arrow { flex: 0 0 76px; display: grid; place-items: center; padding: 0; border-radius: 22px; background: var(--key-off); }
+.nurse .strip-arrow { flex: 0 0 76px; display: grid; place-items: center; padding: 0; border-radius: 22px; background: var(--key-off); box-shadow: var(--raised); }
+.nurse .strip-arrow:active, .nurse .resident:active, .nurse .tab:active, .nurse .chip:active { transform: translateY(1px); }
 .strip-arrow svg { width: 30px; height: 30px; fill: none; stroke: var(--ink); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
 .nurse .resident {
   position: relative;
@@ -117,13 +121,14 @@
   gap: 2px;
   padding: 26px 26px;
   border-radius: 22px;
-  background: var(--face);
+  background: var(--key-face);
+  box-shadow: var(--raised);
   text-align: left;
 }
 .nurse .resident .dot { position: absolute; top: 16px; right: 18px; }
 .resident-name { font-size: 25px; font-weight: 600; }
 .resident-room { font-size: 20px; font-weight: 400; color: var(--ink-muted); }
-.nurse .resident.on { background: var(--key-on); color: #fff; box-shadow: none; }
+.nurse .resident.on { background: var(--key-on); color: #fff; box-shadow: var(--raised-on); }
 .nurse .resident.on .resident-room { color: rgba(255, 255, 255, 0.85); }
 
 /* Detail panel */
@@ -144,13 +149,13 @@
 .detail-head h2 { font-size: 30px; font-weight: 600; }
 .consent { display: flex; flex-direction: column; align-items: center; gap: 6px; }
 .nurse .toggle { display: flex; align-items: center; gap: 12px; min-width: 230px; justify-content: center; background: var(--key-off); }
-.nurse .toggle.on { background: var(--key-on); color: #fff; box-shadow: none; }
+.nurse .toggle.on { background: var(--key-on); color: #fff; box-shadow: var(--raised-on); }
 .toggle-led { width: 12px; height: 12px; border-radius: 50%; background: #7a817c; box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.4); }
 .toggle.on .toggle-led { background: #6ee7a0; box-shadow: 0 0 6px rgba(110, 231, 160, 0.8); }
 
 .tabs, .segmented { display: flex; gap: 6px; padding: 6px; border-radius: 22px; background: var(--well); align-self: flex-start; flex-wrap: wrap; }
-.nurse .tab { padding: 12px 26px; border-radius: 16px; background: var(--key-off); color: var(--ink-label); font-size: 19px; }
-.nurse .tab.on { background: var(--key-on); color: #fff; box-shadow: none; }
+.nurse .tab { padding: 12px 26px; border-radius: 16px; background: var(--key-off); color: var(--ink-label); font-size: 19px; box-shadow: var(--raised); }
+.nurse .tab.on { background: var(--key-on); color: #fff; box-shadow: var(--raised-on); }
 
 /* Lists. .nurse .item outranks the caregiver .item in globals.css (centred, thick border, min-width). */
 .list { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 10px; }
@@ -160,7 +165,7 @@
   border: 1px solid rgba(30, 43, 38, 0.08);
   border-radius: 20px;
   background: #f8f9f5;
-  box-shadow: var(--raised);
+  box-shadow: 0 1px 2px rgba(30, 43, 38, 0.10);
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -185,8 +190,8 @@
 .add { display: flex; gap: 12px; align-items: stretch; }
 .add .field-well { flex: 1; }
 .filters { display: flex; gap: 8px; flex-wrap: wrap; }
-.nurse .chip { padding: 8px 16px; border-radius: 999px; background: #e6e9e2; font-size: 17px; }
-.nurse .chip.on { background: #2f6248; color: #fff; }
+.nurse .chip { padding: 8px 16px; border-radius: 999px; background: var(--key-off); color: var(--ink-label); font-size: 17px; box-shadow: var(--raised); }
+.nurse .chip.on { background: var(--key-on); color: #fff; box-shadow: var(--raised-on); }
 .forget { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding-top: 12px; border-top: 1px solid rgba(30, 43, 38, 0.1); }
 
 /* Fields */
