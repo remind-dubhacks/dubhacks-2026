@@ -248,6 +248,13 @@ def clear_fault(body: ClearIn) -> dict:
         temp, _, _ = pk.read1ByteTxRx(ph, mid, 63)
         if temp >= 65:
             raise HTTPException(409, f"{body.motor} is hot ({temp}°C); let it cool first")
+        lo, _, _ = pk.read2ByteTxRx(ph, mid, 9)
+        hi, _, _ = pk.read2ByteTxRx(ph, mid, 11)
+        signed = pos - 65536 if pos & 0x8000 else pos  # Feetech reports negative positions with bit 15 set
+        if not (lo <= signed <= hi):
+            # Turning torque on here would make the joint swing back toward its limit: never do that.
+            raise HTTPException(409, f"{body.motor} is outside its calibrated range ({signed} vs {lo}–{hi}). "
+                                     "Gently move it back toward the middle by hand, then unplug the arm's DC power for 10 s.")
         pk.write2ByteTxRx(ph, mid, 42, pos)  # target = current position
         pk.write1ByteTxRx(ph, mid, 40, 1)
         time.sleep(0.4)
