@@ -54,7 +54,7 @@ VAD_PRESETS = {
 SLOW_VAD = {"silenceDurationMs": 2200, "prefixPaddingMs": 300}
 
 GAME_NAMES = {"faces": "famous faces", "proverbs": "sayings", "sounds": "sounds", "reorder": "the robot ordering game",
-              "order_memory": "remember the order (with the robot)", "find_remember": "find and remember"}
+              "order_memory": "remember the order (the shuffle game with the robot)", "find_remember": "find and remember"}
 
 
 def transport() -> str:
