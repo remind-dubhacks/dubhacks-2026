@@ -42,4 +42,4 @@ One job at a time, allowlisted actions only, errors go to `needs_staff`, no auto
 
 ## Env flags
 
-`ROBOT_MODE=mock|perceptron`, `VISION_MODE=mock|perceptron`, `GEMINI_API_KEY` (empty = keyword agent), `ELEVENLABS_API_KEY` (empty = browser voice), `MONGODB_URI` (empty = in-memory), `BACKBOARD_API_KEY` (set = voice through Backboard Realtime with automatic patient memory, falling back to direct Gemini if refused; empty = direct Gemini, care profile still used), `VOICE_TRANSPORT=backboard|gemini` (override).
+`ROBOT_MODE=mock|perceptron`, `VISION_MODE=mock|perceptron`, `GEMINI_API_KEY` (empty = keyword agent), `ELEVENLABS_API_KEY` (empty = browser voice), `MONGODB_URI` (empty = in-memory, resets on restart), `BACKBOARD_API_KEY` (required for voice: every call goes through Backboard Realtime, which holds patient memory; the direct-Gemini fallback is commented out during development), `BACKBOARD_DIGEST_MODEL` (after-call fact extraction via Backboard, `provider/model`; empty = default).

@@ -15,7 +15,8 @@ class Settings:
     gemini_api_key: str = os.getenv("GEMINI_API_KEY", "")
     gemini_model: str = os.getenv("GEMINI_MODEL", "gemini-flash-latest")
     gemini_fallback_model: str = os.getenv("GEMINI_FALLBACK_MODEL", "gemini-flash-lite-latest")  # used on 429/503
-    # After-session fact extraction (memory.digest_session). Lite: ~0.5 s, where flash-latest took 27-40 s (2026-10-18).
+    # Direct-Gemini fact extraction, unused while calls are Backboard only (see backboard_digest_model).
+    # Lite: ~0.5 s, where flash-latest took 27-40 s (2026-10-18).
     memory_digest_model: str = os.getenv("MEMORY_DIGEST_MODEL", "gemini-flash-lite-latest")
     gemini_live_model: str = os.getenv("GEMINI_LIVE_MODEL", "gemini-3.8-live")
     gemini_live_voice: str = os.getenv("GEMINI_LIVE_VOICE", "Aoede")
@@ -33,13 +34,19 @@ class Settings:
     elevenlabs_api_key: str = os.getenv("ELEVENLABS_API_KEY", "")
     elevenlabs_voice_id: str = os.getenv("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")  # any voice in your library
     elevenlabs_model: str = os.getenv("ELEVENLABS_MODEL", "eleven_flash_v2_5")
-    # Backboard: the voice call goes through Backboard Realtime, which keeps long-term patient memory (voice/upstreams.py,
-    # voice/memory.py). Unset key = direct Gemini Live with no memory writes; sessions still use the care profile.
+    # Backboard: every voice call goes through Backboard Realtime, which keeps long-term patient memory
+    # (voice/upstreams.py, voice/memory.py). During development there is no direct-Gemini fallback (voice/live.py),
+    # so the voice companion needs this key.
     backboard_api_key: str = os.getenv("BACKBOARD_API_KEY", "")
     backboard_url: str = os.getenv("BACKBOARD_URL", "https://app.backboard.io/api")
     backboard_realtime_url: str = os.getenv("BACKBOARD_REALTIME_URL", "wss://app.backboard.io/api/threads/realtime")
     backboard_realtime_model: str = os.getenv("BACKBOARD_REALTIME_MODEL", os.getenv("GEMINI_LIVE_MODEL", "gemini-3.8-live"))
+    # After-session fact extraction through Backboard's text API (memory.extract_facts): "provider/model", e.g.
+    # google/<a model listed by Backboard's GET /models>. Empty = the assistant's default model.
+    backboard_digest_model: str = os.getenv("BACKBOARD_DIGEST_MODEL", "")
     backboard_timeout_s: float = float(os.getenv("BACKBOARD_TIMEOUT_S", "3.0"))  # session start waits at most this long
+    # Background writes (saving a memory, seeding, the after-call digest): Backboard embeds each memory as it saves it.
+    backboard_write_timeout_s: float = float(os.getenv("BACKBOARD_WRITE_TIMEOUT_S", "30.0"))
     voice_transport: str = os.getenv("VOICE_TRANSPORT", "")  # backboard | gemini; empty = backboard when its key is set
 
 

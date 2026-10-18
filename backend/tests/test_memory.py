@@ -9,6 +9,7 @@ from app.main import DEMO_PARTICIPANT
 from app.models import CareProfile
 from app.voice import memory
 from app.voice.live import NUDGE_AFTER_S, SLOW_VAD, VAD_PRESETS, build_setup, needs_slow_pacing
+from app.voice.memory import provision  # the real one; conftest stubs memory.provision
 from app.voice.prompts.voice_system_prompt import render_profile
 
 ROSE = DEMO_PARTICIPANT["careProfile"]
@@ -51,17 +52,26 @@ def test_needs_slow_pacing():
     assert NUDGE_AFTER_S < 45
 
 
+EXISTING: dict[str, str] = {}  # assistant name -> id already on the fake Backboard account
+
+
 @pytest.fixture
 def backboard(monkeypatch):
-    """Fake Backboard: records requests, answers like the documented API."""
+    """Fake Backboard: records requests, answers like the documented API (and the backboard-sdk client)."""
     calls = []
+    EXISTING.clear()
 
     def handler(req: httpx.Request) -> httpx.Response:
         body = json.loads(req.content) if req.content else None
         calls.append((req.method, req.url.path, body, req.headers.get("X-API-Key")))
-        if req.url.host == "generativelanguage.googleapis.com":  # digest fact extraction
+        if req.url.host != "bb.test":
+            return httpx.Response(599)  # nothing may bypass Backboard
+        if req.url.path.endswith("/threads/messages"):  # digest fact extraction
             facts = ["Rose loves Cary Grant.", "Rose's daughter Linda visits on Sundays."]
-            return httpx.Response(200, json={"candidates": [{"content": {"parts": [{"text": json.dumps(facts)}]}}]})
+            return httpx.Response(200, json={"thread_id": "t1", "messages": [{"role": "assistant", "content": json.dumps(facts)}]})
+        if req.method == "GET" and req.url.path.endswith("/assistants"):
+            name = req.url.params.get("name")
+            return httpx.Response(200, json=[{"assistant_id": EXISTING[name], "name": name}] if name in EXISTING else [])
         if req.url.path.endswith("/assistants"):
             return httpx.Response(200, json={"assistant_id": "a1"})
         if req.url.path.endswith("/memories/search") or (req.method == "GET" and req.url.path.endswith("/memories")):
@@ -91,11 +101,36 @@ async def test_ensure_assistant_creates_and_seeds(backboard):
     await store.insert("participants", dict(p))
     assert await memory.ensure_assistant(store, p) == "a1"
     assert (await store.get("participants", "p1"))["backboardAssistantId"] == "a1"
-    create = backboard[0]
-    assert create[1] == "/api/assistants" and create[2]["custom_fact_extraction_prompt"] == memory.FACT_PROMPT
+    find, create = backboard[0], backboard[1]
+    assert find[:2] == ("GET", "/api/assistants")  # looked up by name first
+    assert create[1] == "/api/assistants" and create[2]["name"] == "ReMind memory: p1"
+    assert create[2]["custom_fact_extraction_prompt"] == memory.FACT_PROMPT
     seeded = [c[2]["content"] for c in backboard if c[1] == "/api/assistants/a1/memories"]
     assert len(seeded) == len(memory.profile_memories(ROSE)) and any("Cary Grant" in s for s in seeded)
-    assert await memory.ensure_assistant(store, p) == "a1" and len(backboard) == 1 + len(seeded)  # no second create
+    assert await memory.ensure_assistant(store, p) == "a1" and len(backboard) == 2 + len(seeded)  # no second create
+
+
+async def test_ensure_assistant_relinks_existing_without_seeding(backboard):
+    """Our store lost the id (in-memory store after a restart): the assistant Backboard already has is re-linked, its
+    memories kept, and the care profile is not seeded a second time."""
+    from app.db import MemoryStore
+    store = MemoryStore()
+    EXISTING["ReMind memory: p1"] = "old1"
+    p = {"_id": "p1", "alias": "Rose", "careProfile": ROSE}
+    await store.insert("participants", dict(p))
+    assert await memory.ensure_assistant(store, p) == "old1"
+    assert (await store.get("participants", "p1"))["backboardAssistantId"] == "old1"
+    assert [c[:2] for c in backboard] == [("GET", "/api/assistants")]
+
+
+async def test_provision_covers_consenting_participants(backboard):
+    from app.db import MemoryStore
+    store = MemoryStore()
+    await store.insert("participants", {"_id": "yes", "consentFlags": {"rememberPreferences": True}})
+    await store.insert("participants", {"_id": "no", "consentFlags": {"rememberPreferences": False}})
+    await provision(store)
+    assert (await store.get("participants", "yes"))["backboardAssistantId"] == "a1"
+    assert "backboardAssistantId" not in await store.get("participants", "no")
 
 
 async def test_off_without_key_and_on_errors(monkeypatch):
@@ -119,14 +154,24 @@ def test_is_known_matches_rewordings_not_new_facts():
 
 
 async def test_digest_session_saves_only_new_facts(backboard, monkeypatch):
-    monkeypatch.setattr(settings, "gemini_api_key", "g")
+    monkeypatch.setattr(settings, "gemini_api_key", "g")  # set, but extraction must still go through Backboard
     saved = await memory.digest_session("a1", "Rose", ["I do love Cary Grant.", "Linda comes every Sunday."])
     assert saved == ["Rose's daughter Linda visits on Sundays."]  # "loves Cary Grant" is already remembered
-    gem = next(c for c in backboard if "generateContent" in c[1])
-    prompt = gem[2]["contents"][0]["parts"][0]["text"]
-    assert "Linda comes every Sunday." in prompt and "Loves Cary Grant" in prompt  # what was said + what is known
+    assert all(c[3] == "k" for c in backboard)  # every request went to Backboard
+    msg = next(c for c in backboard if c[1] == "/api/threads/messages")[2]
+    assert msg["assistant_id"] == "a1" and msg["memory"] == "off" and msg["json_output"] is True
+    assert msg["system_prompt"] == memory.DIGEST_PROMPT and "llm_provider" not in msg  # default model unless configured
+    assert "Linda comes every Sunday." in msg["content"] and "Loves Cary Grant" in msg["content"]  # said + known
     adds = [c[2] for c in backboard if c[0] == "POST" and c[1] == "/api/assistants/a1/memories"]
     assert adds == [{"content": "Rose's daughter Linda visits on Sundays.", "metadata": {"kind": "session"}}]
+
+
+async def test_digest_model_setting_and_object_replies(backboard, monkeypatch):
+    monkeypatch.setattr(settings, "backboard_digest_model", "google/some-flash-model")
+    monkeypatch.setattr(memory, "_transport", httpx.MockTransport(lambda r: httpx.Response(200, json={
+        "content": json.dumps({"facts": ["Rose's favourite food is hot dogs."]}), "thread_id": "t1"})))
+    assert await memory.extract_facts("a1", "Rose", ["My favourite food is hot dogs."], []) == ["Rose's favourite food is hot dogs."]
+    assert memory._digest_model() == {"llm_provider": "google", "model_name": "some-flash-model"}
 
 
 async def test_digest_session_skips_without_input(backboard, monkeypatch):
@@ -134,3 +179,43 @@ async def test_digest_session_skips_without_input(backboard, monkeypatch):
     assert await memory.digest_session(None, "Rose", ["hello"]) == []
     assert await memory.digest_session("a1", "Rose", []) == []
     assert backboard == []
+
+
+async def test_digest_skips_what_remember_already_saved(backboard):
+    saved = await memory.digest_session("a1", "Rose", ["Linda comes every Sunday."],
+                                        remembered=["Rose's daughter Linda visits on Sundays."])
+    assert saved == []
+    assert not [c for c in backboard if c[0] == "POST" and c[1] == "/api/assistants/a1/memories"]
+
+
+async def test_writes_use_the_write_timeout(monkeypatch):
+    timeouts = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        timeouts.append((req.method, req.url.path, req.extensions["timeout"]["read"]))
+        return httpx.Response(200, json={"memories": []})
+    monkeypatch.setattr(settings, "backboard_api_key", "k")
+    monkeypatch.setattr(settings, "backboard_timeout_s", 3.0)
+    monkeypatch.setattr(settings, "backboard_write_timeout_s", 30.0)
+    monkeypatch.setattr(memory, "_transport", httpx.MockTransport(handler))
+    await memory.add("a1", "Likes tea.")
+    await memory.recall("a1")
+    assert timeouts[0][2] == 30.0 and timeouts[1][2] == 3.0  # saving waits for Backboard; session start does not
+
+
+async def test_unreachable_lookup_never_creates_a_second_assistant(monkeypatch):
+    """A timeout while looking the assistant up by name must not read as "none exists": creating one then would
+    split the person's memories across two assistants."""
+    from app.db import MemoryStore
+    calls = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        calls.append((req.method, req.url.path))
+        raise httpx.ReadTimeout("slow", request=req)
+    monkeypatch.setattr(settings, "backboard_api_key", "k")
+    monkeypatch.setattr(memory, "_transport", httpx.MockTransport(handler))
+    store = MemoryStore()
+    p = {"_id": "p1", "careProfile": ROSE}
+    await store.insert("participants", dict(p))
+    assert await memory.ensure_assistant(store, p) is None
+    assert calls == [("GET", "/api/assistants")]  # looked up, gave up; no POST
