@@ -13,6 +13,8 @@ class Settings:
     gemini_api_key: str = os.getenv("GEMINI_API_KEY", "")
     gemini_model: str = os.getenv("GEMINI_MODEL", "gemini-flash-latest")
     gemini_fallback_model: str = os.getenv("GEMINI_FALLBACK_MODEL", "gemini-flash-lite-latest")  # used on 429/503
+    # After-session fact extraction (memory.digest_session). Lite: ~0.5 s, where flash-latest took 27-40 s (2026-10-18).
+    memory_digest_model: str = os.getenv("MEMORY_DIGEST_MODEL", "gemini-flash-lite-latest")
     gemini_live_model: str = os.getenv("GEMINI_LIVE_MODEL", "gemini-3.8-live")
     gemini_live_voice: str = os.getenv("GEMINI_LIVE_VOICE", "Aoede")
     gemini_live_temperature: float = float(os.getenv("GEMINI_LIVE_TEMPERATURE", "0.6"))

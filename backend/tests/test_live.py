@@ -199,8 +199,9 @@ def test_live_relay_sends_reminder_without_turn_complete(monkeypatch):
 
 
 def test_gemini_fallback_reads_memories_into_prompt(monkeypatch):
-    """Direct Gemini: the care profile and recalled memories go into the prompt; nothing is written back."""
-    received, recalled, added = [], [], []
+    """Direct Gemini: the care profile and recalled memories go into the prompt; nothing is written mid-call, and
+    what the person said is digested afterwards."""
+    received, recalled, added, digested = [], [], [], []
     port = serve(fake_gemini, received)
     monkeypatch.setattr(settings, "gemini_api_key", "test")
     monkeypatch.setattr(settings, "gemini_live_url", f"ws://127.0.0.1:{port}")
@@ -211,14 +212,18 @@ def test_gemini_fallback_reads_memories_into_prompt(monkeypatch):
 
     async def fake_add(*a, **kw):
         added.append(a)
+    async def fake_digest(aid, patient, said):
+        digested.append((aid, patient, list(said)))
     monkeypatch.setattr(memory, "recall", fake_recall)
     monkeypatch.setattr(memory, "add", fake_add)
+    monkeypatch.setattr(memory, "digest_session", fake_digest)
 
     with TestClient(main.app) as c:
         asyncio.run(main.app.state.store.update("participants", "demo-rose", {"backboardAssistantId": "a1"}))
         with c.websocket_connect("/api/voice/live?participantId=demo-rose&games=faces") as ws:
             collect(ws)
             finish(c, ws)
+            wait_for(lambda: digested)
     setup = received[0]["setup"]
     prompt = setup["systemInstruction"]["parts"][0]["text"]
     assert "ABOUT ROSE" in prompt and "Cary Grant" in prompt and "Saw Roman Holiday three times." in prompt
@@ -227,6 +232,7 @@ def test_gemini_fallback_reads_memories_into_prompt(monkeypatch):
     greeting = next(e["realtimeInput"]["text"] for e in received if "text" in e.get("realtimeInput", {}))
     assert "Rose" in greeting and "classic movie stars" in greeting
     assert added == []
+    assert digested and digested[0][:2] == ("a1", "Rose")
 
 
 def use_backboard(monkeypatch, port: int) -> None:
@@ -236,12 +242,17 @@ def use_backboard(monkeypatch, port: int) -> None:
 
 
 def test_backboard_relay(monkeypatch):
-    """Through Backboard: setup frame carries the patient's assistant + memory=Auto + native Gemini config; tools,
-    transcripts, audio and the silent reminder all round-trip; the session is stopped cleanly at the end."""
-    received = []
+    """Through Backboard: setup frame carries the patient's assistant + memory=Readonly + native Gemini config; tools,
+    transcripts, audio and the silent reminder all round-trip; the session is stopped cleanly at the end and what
+    the person said is digested into memory."""
+    received, digested = [], []
     port = serve(fake_backboard, received)
     use_backboard(monkeypatch, port)
     monkeypatch.setattr(settings, "gemini_live_remind_every", 1)
+
+    async def fake_digest(aid, patient, said):
+        digested.append((aid, patient, list(said)))
+    monkeypatch.setattr(memory, "digest_session", fake_digest)
 
     with TestClient(main.app) as c:
         asyncio.run(main.app.state.store.update("participants", "demo-rose", {"backboardAssistantId": "a1"}))
@@ -251,11 +262,13 @@ def test_backboard_relay(monkeypatch):
             wait_for(lambda: any("clientContent" in e.get("event", {}) for e in received))
             finish(c, ws)
             wait_for(lambda: any(e.get("type") == "stop" for e in received))  # background close: stop handshake
+            wait_for(lambda: digested)
 
     setup = received[0]
     assert setup["_api_key"] == "bb-key"
     assert setup["provider"] == "google" and setup["model"] == settings.backboard_realtime_model
-    assert setup["assistant_id"] == "a1" and setup["memory"] == "Auto"
+    assert setup["assistant_id"] == "a1" and setup["memory"] == "Readonly"
+    assert digested == [("a1", "Rose", ["play the ordering game"])]
     assert "ABOUT ROSE" in setup["system_prompt"] and "Cary Grant" in setup["system_prompt"]
     opts = setup["provider_options"]
     assert "systemInstruction" not in opts and opts["realtimeInputConfig"]["automaticActivityDetection"]["silenceDurationMs"] == 2200
@@ -305,7 +318,7 @@ def test_backboard_first_session_creates_assistant(monkeypatch):
     with TestClient(main.app) as c, c.websocket_connect("/api/voice/live?participantId=demo-rose&games=faces") as ws:
         collect(ws)
         finish(c, ws)
-    assert received[0]["assistant_id"] == "new1" and received[0]["memory"] == "Auto"
+    assert received[0]["assistant_id"] == "new1" and received[0]["memory"] == "Readonly"
     assert seeded == [("new1", True)]
 
 

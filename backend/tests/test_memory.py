@@ -59,6 +59,9 @@ def backboard(monkeypatch):
     def handler(req: httpx.Request) -> httpx.Response:
         body = json.loads(req.content) if req.content else None
         calls.append((req.method, req.url.path, body, req.headers.get("X-API-Key")))
+        if req.url.host == "generativelanguage.googleapis.com":  # digest fact extraction
+            facts = ["Rose loves Cary Grant.", "Rose's daughter Linda visits on Sundays."]
+            return httpx.Response(200, json={"candidates": [{"content": {"parts": [{"text": json.dumps(facts)}]}}]})
         if req.url.path.endswith("/assistants"):
             return httpx.Response(200, json={"assistant_id": "a1"})
         if req.url.path.endswith("/memories/search") or (req.method == "GET" and req.url.path.endswith("/memories")):
@@ -106,3 +109,28 @@ async def test_off_without_key_and_on_errors(monkeypatch):
         raise httpx.ReadTimeout("slow", request=req)
     monkeypatch.setattr(memory, "_transport", httpx.MockTransport(timeout))
     assert await memory.recall("a1") == [] and await memory.create_assistant("Rose") is None
+
+
+def test_is_known_matches_rewordings_not_new_facts():
+    known = ["Married husband Harold in 1962 in Brighton.", "Rose likes tea."]
+    assert memory.is_known("Rose married her husband Harold in 1962 in Brighton.", known, "Rose")
+    assert not memory.is_known("Rose likes coffee.", known, "Rose")  # shares the name and "likes", not the fact
+    assert not memory.is_known("Granddaughter Lily plays the violin.", known, "Rose")
+
+
+async def test_digest_session_saves_only_new_facts(backboard, monkeypatch):
+    monkeypatch.setattr(settings, "gemini_api_key", "g")
+    saved = await memory.digest_session("a1", "Rose", ["I do love Cary Grant.", "Linda comes every Sunday."])
+    assert saved == ["Rose's daughter Linda visits on Sundays."]  # "loves Cary Grant" is already remembered
+    gem = next(c for c in backboard if "generateContent" in c[1])
+    prompt = gem[2]["contents"][0]["parts"][0]["text"]
+    assert "Linda comes every Sunday." in prompt and "Loves Cary Grant" in prompt  # what was said + what is known
+    adds = [c[2] for c in backboard if c[0] == "POST" and c[1] == "/api/assistants/a1/memories"]
+    assert adds == [{"content": "Rose's daughter Linda visits on Sundays.", "metadata": {"kind": "session"}}]
+
+
+async def test_digest_session_skips_without_input(backboard, monkeypatch):
+    monkeypatch.setattr(settings, "gemini_api_key", "g")
+    assert await memory.digest_session(None, "Rose", ["hello"]) == []
+    assert await memory.digest_session("a1", "Rose", []) == []
+    assert backboard == []

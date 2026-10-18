@@ -5,8 +5,9 @@ voice/upstreams.py). The server holds the API keys and runs the tools; the model
 Browser sends PCM16 mono 16 kHz; replies are PCM16 (24 kHz unless the provider says otherwise).
 Docs: https://ai.google.dev/gemini-api/docs/live, https://docs.backboard.io
 
-Long-term memory: through Backboard, each patient has their own assistant and memory="Auto" retrieves and saves
-facts by itself. Directly to Gemini, memories are read once into the prompt and nothing new is saved.
+Long-term memory: each patient has their own Backboard assistant. Through Backboard, memory="Readonly" retrieves
+facts during the call; directly to Gemini, they are read once into the prompt. Either way, new facts are saved
+after the call (memory.digest_session), never mid-conversation, so remembering adds no delay to a reply.
 """
 import asyncio
 import json
@@ -128,7 +129,8 @@ def should_remind(user_turns: int, last_reminded_turn: int, recent_words: list[i
 
 async def open_upstream(ws: WebSocket, name: str, games: list[str], participant: dict):
     """Pick the transport and build its setup. Backboard: make sure the patient has an assistant (one per patient,
-    created on their first session) and let memory="Auto" handle recall and saving. Gemini: read memories once."""
+    created on their first session) and let memory="Readonly" handle recall. Gemini: read memories once.
+    Saving happens after the call, in run()."""
     profile = participant.get("careProfile") or {}
     assistant_id = participant.get("backboardAssistantId")
     can_remember = participant.get("consentFlags", {}).get("rememberPreferences", False)
@@ -137,7 +139,7 @@ async def open_upstream(ws: WebSocket, name: str, games: list[str], participant:
             assistant_id = await memory.ensure_assistant(ws.app.state.store, participant, with_seed=False)
             if assistant_id:
                 background(memory.seed(assistant_id, profile))
-        mode = "off" if not assistant_id else "Auto" if can_remember else "Readonly"
+        mode = "Readonly" if assistant_id else "off"
         return BackboardUpstream(backboard_setup(name, games, assistant_id=assistant_id, memory_mode=mode, profile=profile))
     return await gemini_upstream(name, games, participant)
 
@@ -192,6 +194,7 @@ async def run(ws: WebSocket) -> None:
     nudges = 0
     user_turns = last_reminded_turn = 0
     recent_words: list[int] = []  # output word counts of recent model turns, for the brevity reminder
+    said: list[str] = []  # the person's finished turns, for memory.digest_session; never stored
 
     up = await connect_upstream(ws, name, games, participant)
     if up is None:
@@ -206,6 +209,7 @@ async def run(ws: WebSocket) -> None:
         nonlocal user_buf, user_turns
         if user_buf.strip():
             user_turns += 1
+            said.append(user_buf.strip())
             await ws.send_json({"type": "user_text", "text": user_buf.strip()})
         user_buf = ""
 
@@ -307,8 +311,12 @@ async def run(ws: WebSocket) -> None:
         for t in tasks:
             t.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)  # the reader must be gone before close() reads
+        if user_buf.strip():  # cut off mid-turn; the browser may be gone, so just keep it for the digest
+            said.append(user_buf.strip())
         await save_record(ws, state, started_at, participant.get("_id"))
-        background(close_quietly(up))  # Backboard's stop handshake (memory save) can take a moment; don't hold the handler
+        background(close_quietly(up))  # Backboard's stop handshake can take a moment; don't hold the handler
+        if participant.get("consentFlags", {}).get("rememberPreferences"):
+            background(memory.digest_session(participant.get("backboardAssistantId"), name, said))
 
 
 async def close_quietly(up) -> None:
