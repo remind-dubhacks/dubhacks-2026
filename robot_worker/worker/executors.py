@@ -10,6 +10,8 @@ from .motion_guard import ActionGuard, GraspMonitor, GuardError
 from .robot import Stopped
 
 DEFAULT_START = ["black", "white", "purple"]  # docs/RECORDING_SETUP.md
+# Retry offsets (deg of shoulder_pan) when a pick misses: same spot, then a little to each side.
+SEARCH_OFFSETS_DEG = [float(x) for x in os.getenv("PICK_SEARCH_DEG", "0,2.5,-2.5,5,-5").split(",")]
 HANDS_EVERY = int(os.getenv("HANDS_CHECK_EVERY_N_ACTIONS", "6"))  # ~5 checks a second at 30 fps
 HANDS_CLEAR_S = float(os.getenv("HANDS_CLEAR_SECONDS", "1.5"))  # table must stay clear this long
 HANDS_MAX_WAIT_S = float(os.getenv("HANDS_MAX_WAIT_SECONDS", "30"))
@@ -379,11 +381,23 @@ class ScriptedExecutor:
             move(down)
             grip(GRIP_CLOSE, 0.4)
             if not self._holding():
-                # Missed: open, try once more from the same spot, then stop before placing so a
-                # missed keyring is never knocked by the next move.
-                grip(GRIP_OPEN, 0.3)
-                grip(GRIP_CLOSE, 0.4)
-                if not self._holding():
+                # Missed: feel for it. The gripper reading tells holding from empty, so search a
+                # little to each side (the camera can't see slot 4, where keyrings shift on release).
+                # Lift between tries so a miss never drags the keyring; stop before placing if all fail.
+                found = False
+                for off in SEARCH_OFFSETS_DEG:
+                    grip(GRIP_OPEN, 0.2)
+                    move(above)
+                    a2 = {**above, "shoulder_pan.pos": above["shoulder_pan.pos"] + off}
+                    d2 = {**down, "shoulder_pan.pos": down["shoulder_pan.pos"] + off}
+                    move(a2)
+                    move(d2)
+                    grip(GRIP_CLOSE, 0.4)
+                    if self._holding():
+                        above, found = a2, True
+                        self.corrections.append({"slot": a, "object": obj, "searchDeg": off})
+                        break
+                if not found:
                     grip(GRIP_OPEN, 0.3)
                     move(above)
                     move(poses["home"])
