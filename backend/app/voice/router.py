@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from ..alerts import normalize_phone, send_text
 from ..config import settings
 from . import agent, live
-from .tools import GAMES, GameState, tool_catalog
+from .tools import GAMES, GameState, tool_catalog, watch_table
 
 router = APIRouter(prefix="/api/voice", tags=["voice"])
 
@@ -29,6 +29,20 @@ async def voice_turn(body: TurnIn) -> dict:
     while history and not (history[0].get("role") == "user" and (isinstance(history[0].get("content"), str) or any("text" in p for p in history[0].get("parts", [])))):
         history.pop(0)
     return {"reply": reply, "toolCalls": calls, "state": state.view()}
+
+
+class WatchIn(BaseModel):
+    sessionId: str
+    reading: dict | None = None  # demo/testing: {order, seen, hands}; otherwise the robot's side camera
+
+
+@router.post("/watch")
+async def watch(body: WatchIn) -> dict:
+    """Live table watching while the person restores the row. Poll about once a second; speak
+    `say` when it is not null (the app decides when it's a good moment)."""
+    state, _ = SESSIONS.setdefault(body.sessionId, (GameState(), []))
+    out = await watch_table(state, body.reading)
+    return {**out, "state": state.view()}
 
 
 @router.post("/reset")

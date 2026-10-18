@@ -51,7 +51,8 @@ VAD_PRESETS = {
 # Laid over the preset when the care profile says they stutter, lose words or speak slowly: they pause mid-sentence.
 SLOW_VAD = {"silenceDurationMs": 2200, "prefixPaddingMs": 300}
 
-GAME_NAMES = {"faces": "famous faces", "proverbs": "sayings", "sounds": "sounds", "reorder": "the robot ordering game"}
+GAME_NAMES = {"faces": "famous faces", "proverbs": "sayings", "sounds": "sounds", "reorder": "the robot ordering game",
+              "order_memory": "remember the order (with the robot)", "find_remember": "find and remember"}
 
 
 def transport() -> str:

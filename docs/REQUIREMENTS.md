@@ -8,7 +8,9 @@ DubHacks 2026 | Reorder Game MVP | Complements [SPEC.md](SPEC.md) (this doc narr
 
 A long-term care nurse staffs ~10 residents and cannot sit with each one. ReMind lets a caregiver launch short, automated cognitive games and check in on results from one screen. A conversational voice agent talks to the resident, picks a game from a **catalog**, and triggers the robot policy that runs it.
 
-**MVP game: Reorder.** The SO-101 robot arm randomly shuffles a row of objects. The resident puts them back in the correct order. The camera checks the result, and the agent gives spoken feedback.
+**MVP game: Remember the Order.** The resident looks at a row of three keyrings and says them together with the agent. The SO-101 arm mixes them up with one of 5 trained shuffles. The resident puts them back the way they were. The camera follows the table while they do it, and the agent supports them at the right moment, errorless: it never says "wrong". If they'd like, the robot shows the answer.
+
+**Errorless rules (apply to every game).** Support comes *before* an error can stick: choices of two, then showing the answer together. No "wrong", no countdown, no attempt limit that ends in failure, no score, no response times. Evidence and limits: [EXERCISE_FIND_AND_REMEMBER.md](EXERCISE_FIND_AND_REMEMBER.md).
 
 ## 2. Users
 
@@ -21,13 +23,20 @@ A long-term care nurse staffs ~10 residents and cannot sit with each one. ReMind
 
 1. Resident says something like "Let's play a game." The agent matches it to a game in the catalog (MVP: Reorder).
 2. Backend validates the request (caregiver-approved session, game on allowlist, robot idle) and queues the robot job.
-3. **Robot shuffles** the objects into a random order, then reports done.
-4. Agent tells the resident the target order (for example "put the cup, the apple, then the book in a row, small to big, or by the reference card").
-5. **Resident reorders** the objects by hand.
-6. Resident says "done" (or taps Done). Camera captures the table; the vision step reads the object order.
-7. **Correct:** agent says so and offers another round or a different game.
-   **Wrong:** agent says it is not quite right and explains why in plain words (for example "the apple should come before the book"). Max **3 attempts** per round (configurable `MAX_TRIALS`). After the last attempt the agent shows the answer kindly (robot or screen) and moves on.
-8. Results are saved, and the caregiver dashboard updates. A caregiver is messaged if needed.
+3. **Study:** agent names the row left to right and they say it together once, then the resident says it back (any answer gets "let's say it once more together", never a correction).
+4. **Robot shuffles** the row ("hands resting on your lap, please"). The robot pauses on its own if a hand comes onto the table, and its camera confirms the new order.
+5. **Resident restores** the row by hand. The camera follows the table about once a second:
+   - it notices which keyring is lifted, and judges a placement only once the row has settled (no hand on the table for 2 s);
+   - right spot: a short "yes, the black one goes on the left";
+   - wrong spot: nothing at first; if it stays for 4 s, a gentle two-way choice ("Let's look on the left. Was it the black one, or the white one?");
+   - holding a keyring for 10 s: "Where was it at the start? On the left, or on the right?";
+   - no activity: encouragement at 20 s, a two-way choice at 45 s, and at 75 s the robot offers to show the answer;
+   - at most one cue every 8 s, and never while a hand is on the table.
+   Saying "done" still works, and without a camera the resident can say the order in words.
+6. **Restored:** praise, then one optional memory question about an object (always skippable, never corrected).
+7. **Robot shows (on "yes")**: one robot shuffle puts the row back, and they say it together once. Counts as "restored together".
+8. Later rounds: harder after success, easier after help, and a spaced recall question ("In our very first row, which one was on the left?").
+9. Results are saved as engagement notes (restored alone / with a choice / together), and a caregiver is messaged if the robot needs help or the resident asks.
 
 ## 4. Functional requirements
 
@@ -38,11 +47,12 @@ Priority: **P0** = must work in the demo, **P1** = should, **P2** = stretch.
 | --- | --- | --- |
 | G1 | Fixed set of 3 distinct, lightweight, easy-to-grasp objects (N configurable up to 4). Defined target order per round. | P0 |
 | G2 | Robot shuffles objects into a random order that is **not** already the target order. | P0 |
-| G3 | Resident reorders by hand; the system waits for a "done" signal (voice or button). | P0 |
-| G4 | Vision reads the object order from the camera image and compares it with the target. | P0 |
-| G5 | Up to `MAX_TRIALS` (default 3) attempts per round, with per-attempt feedback. | P0 |
-| G6 | Wrong-answer feedback names which object(s) are misplaced and why, in one or two short sentences. | P0 |
-| G7 | Difficulty levels: fewer objects, or a visual hint card. | P2 |
+| G3 | Resident restores by hand. The camera follows the table live (`POST /api/voice/watch`); "done" by voice or button also works. | P0 |
+| G4 | Vision reads the left-to-right order. If not all three keyrings are visible, the answer is "unsure", never a guess. | P0 |
+| G5 | Errorless support instead of attempts: right spots praised, a two-way choice for a spot that stays wrong, then shown together. No attempt limit, no "wrong". | P0 |
+| G6 | Timing: speak only when the row has settled and no hand is on the table; at most one cue every 8 s; hesitation support at 20 / 45 / 75 s. | P0 |
+| G7 | Difficulty adapts: 2 objects after help, 3 after success; easy swaps after help (robot rounds always use 3). | P1 |
+| G8 | Robot can show the answer: the one trained shuffle that turns the current row back into the original. | P1 |
 
 ### 4.2 Conversational agent
 | ID | Requirement | Pri |
@@ -66,16 +76,17 @@ Priority: **P0** = must work in the demo, **P1** = should, **P2** = stretch.
 ### 4.4 Vision and evaluation
 | ID | Requirement | Pri |
 | --- | --- | --- |
-| V1 | Capture an image on "done" and return the detected left-to-right order (Perceptron vision API or equivalent). | P0 |
-| V2 | Return confidence. Low confidence means the agent asks the resident to adjust the objects, or asks for caregiver confirmation. | P0 |
-| V3 | Produce a short reason string for a wrong order (feeds G6). | P0 |
+| V1 | `GET /studio/vision/row` on the robot worker: keyring order (slot 1 first) and whether a hand is on the table. Tested on real recorded frames. | P0 |
+| V2 | Partly visible row → order unknown. The game stays quiet or asks in words; the robot job goes to caregiver verification. | P0 |
+| V3 | Events for the game: which keyring was lifted, where it was placed, right or not. | P0 |
+| V4 | Camera must see all four slots. Today it cuts off slot 3 in some frames: re-aim it before the demo. | P0 |
 
 ### 4.5 Caregiver dashboard
 | ID | Requirement | Pri |
 | --- | --- | --- |
 | C1 | Select a resident profile (pseudonymous) and approve/launch a game session. | P0 |
 | C2 | Live view of session state, attempt number and robot status; Stop button. | P0 |
-| C3 | Per-session result: correct or not, attempts used, time taken. Nonclinical wording only. | P0 |
+| C3 | Per-session engagement notes: rows restored alone / with a choice / together, memories shared. No score and no times. Nonclinical wording only. | P0 |
 | C4 | List of residents with last-run status (supports ~10 residents). | P1 |
 | C5 | Alert to the caregiver (Photon message) on `needs_staff`, repeated failures, or a resident asking for help. | P1 |
 | C6 | Trend view across sessions per resident. Show raw facts, not a "decline" score. | P2 |
@@ -89,7 +100,7 @@ Priority: **P0** = must work in the demo, **P1** = should, **P2** = stretch.
 
 ## 5. Non-functional requirements
 
-- **Safety:** clear robot workspace, physical e-stop reachable, supervised use only.
+- **Safety:** clear robot workspace, physical e-stop reachable, supervised use only. The robot holds still while a hand is on the table (side camera, ~5 checks a second) and stops after 30 s. Every policy action is clamped to calibrated joint limits and the demonstrated range (`robot_worker/worker/motion_guard.py`).
 - **Robustness:** every spoken or on-screen step has a typed/tap fallback. Demo must survive Wi-Fi or API failure via mock/scripted modes.
 - **Latency:** agent reply under about 2 s. Vision check under about 3 s.
 - **Privacy:** pseudonymous profiles, no real PHI.
@@ -111,12 +122,11 @@ Resident UI (Next.js)     Caregiver UI (Next.js)
 
 Repo layout: `frontend/`, `backend/`, `robot_worker/` (see [README](../README.md)).
 
-### Session states for the Reorder game
+### Session states for Remember the Order
 
 ```
-idle -> consented -> game_selected -> shuffling -> awaiting_player
-     -> checking -> (correct -> complete) | (wrong -> feedback -> awaiting_player, up to MAX_TRIALS)
-     -> reveal -> complete
+idle -> consented -> study -> shuffling (robot) -> restore (camera watching, errorless cues)
+     -> [robot shows, on request] -> restored -> memory question -> next round | recall -> complete
 ```
 Any state can go to `stopped`. Hardware or vision errors go to `needs_staff`.
 

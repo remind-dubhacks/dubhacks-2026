@@ -25,7 +25,27 @@ export type VoiceState = {
   screen: Screen;
   sound: { src: string; id: number } | null;
   observations: Observation[];
+  exercise?: {
+    phase?: string;
+    row?: string[];
+    watching?: boolean;
+    robot?: { status?: "moving" | "done" | "failed"; purpose?: "shuffle" | "show"; error?: string };
+    [k: string]: unknown;
+  };
 };
+
+export type WatchEvent = { kind: string; obj?: string; spot?: number; right?: boolean; level?: number };
+
+// Live table watching while the person restores the row: poll ~once a second, speak `say` when set.
+export async function voiceWatch(sessionId: string) {
+  const r = await fetch(`${API}/api/voice/watch`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sessionId }),
+  });
+  if (!r.ok) throw new Error(`${r.status}`);
+  return (await r.json()) as { say: string | null; events: WatchEvent[]; camera?: boolean; state: VoiceState };
+}
 
 export type ToolCall = { name: string; args: Record<string, unknown>; result: Record<string, unknown> };
 
