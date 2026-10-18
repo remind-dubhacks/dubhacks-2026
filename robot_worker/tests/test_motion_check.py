@@ -676,3 +676,10 @@ def test_find_xy_on_a_real_frame():
     xy = __import__("worker.row_check", fromlist=["find_xy"]).find_xy(cv2.imread(str(FIX / "ep00_start.jpg")))
     assert set(xy) == {"black", "white", "purple"}
     assert all(0 <= v <= 1 for p in xy.values() for v in p)
+
+
+def test_spot_check_knows_each_keyrings_shape():
+    """Calibrated black, white, purple; after swap_lr purple sits on slot 1 and black on slot 3."""
+    ref = {1: (0.8627, 0.1972), 2: (0.6166, 0.2048), 3: (0.3446, 0.4367)}
+    after = {"purple": (0.8627, 0.1972 + (0.4367 - 0.201)), "white": (0.6166, 0.2048), "black": (0.3446, 0.201)}
+    assert slot_locate.spot_problems(after, ["purple", "white", "black", None], ref) == []

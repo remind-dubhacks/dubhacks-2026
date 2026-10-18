@@ -56,6 +56,32 @@ TOL_Y = float(os.getenv("SPOT_TOL_Y", "0.05"))
 NAMES_VI = {"black": "đen", "white": "trắng", "purple": "tím"}
 
 
+CAL_START = ["black", "white", "purple"]
+
+
+def object_offsets(ref_xy: dict[int, tuple[float, float]], cal_start: list[str] = CAL_START) -> dict[str, tuple[float, float]]:
+    """How far each keyring's detected centre sits from a keycap's in the same spot. The purple
+    switch block is long, so its centre is much lower in the image; the two keycaps match."""
+    caps = [s for s, o in enumerate(cal_start, 1) if o in ("black", "white") and s in ref_xy]
+    if not caps:
+        return {}
+    base_y = sum(ref_xy[s][1] for s in caps) / len(caps)
+    out = {o: (0.0, 0.0) for o in ("black", "white")}
+    for s, o in enumerate(cal_start, 1):
+        if o not in out and s in ref_xy:
+            out[o] = (0.0, ref_xy[s][1] - base_y)
+    return out
+
+
+def slot_spot(slot: int, obj: str, ref_xy: dict[int, tuple[float, float]], cal_start: list[str] = CAL_START) -> tuple[float, float]:
+    """Where `obj` should appear when it sits on `slot`'s grab spot."""
+    offs = object_offsets(ref_xy, cal_start)
+    cal_obj = cal_start[slot - 1]
+    rx, ry = ref_xy[slot]
+    ry -= offs.get(cal_obj, (0.0, 0.0))[1]  # the slot's spot for a keycap
+    return rx, ry + offs.get(obj, (0.0, 0.0))[1]
+
+
 def spot_problems(found_xy: dict[str, tuple[float, float]], row: list[str | None],
                   ref_xy: dict[int, tuple[float, float]]) -> list[dict]:
     """Keyrings that sit too far from the spot the robot grabs at, with a plain hint which way to
@@ -66,7 +92,7 @@ def spot_problems(found_xy: dict[str, tuple[float, float]], row: list[str | None
         if obj is None or slot not in ref_xy or obj not in found_xy:
             continue
         x, y = found_xy[obj]
-        rx, ry = ref_xy[slot]
+        rx, ry = slot_spot(slot, obj, ref_xy)
         dx, dy = x - rx, y - ry
         if abs(dx) <= TOL_X and abs(dy) <= TOL_Y:
             continue
