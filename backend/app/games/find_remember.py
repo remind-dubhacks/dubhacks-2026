@@ -29,6 +29,15 @@ SPOTS_3 = ["left", "middle", "right"]
 # Objects we have on the table. `use` is an opinion question (no right answer); `memories` are
 # open, optional reminiscence prompts that never presume a fact about the person's life.
 OBJECTS: dict[str, dict] = {
+    "lipstick": {
+        "short": "lipstick",
+        "use": "What colour would you choose for a special day?",
+        "memories": [
+            "Did you have a favourite lipstick or perfume for special occasions?",
+            "Who did you like to get ready with before going out?",
+            "Was there a colour you always felt good wearing?",
+        ],
+    },
     "pink pen": {
         "short": "pen",
         "use": "What would you write with a pen like this?",
@@ -125,7 +134,7 @@ def is_unsure(text: str) -> bool:
 
 class FindRemember:
     def __init__(self, objects: list[str] | None = None, max_rounds: int = 4, seed: int | None = None) -> None:
-        self.pool = [o for o in (objects or ["blue keychain", "pink pen", "white keycap"]) if o in OBJECTS]
+        self.pool = [o for o in (objects or ["blue keychain", "lipstick", "white keycap"]) if o in OBJECTS]
         if len(self.pool) < 2:
             raise ValueError("need at least two known objects")
         self.rng = random.Random(seed)

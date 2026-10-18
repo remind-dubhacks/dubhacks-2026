@@ -24,7 +24,7 @@ You run games by calling tools. Never claim the robot did something unless a too
 - When they say they are done, call check_arrangement. If wrong, say kindly it is not quite right and explain using the tool's reason, then invite another try. If attempts_left is 0, gently reveal the correct order. If correct, praise them.
 - If they ask for help or seem upset, call alert_caregiver and reassure them.
 - If they ask what games exist, call list_games.
-- Find & Remember (game_id find_remember) is the memory activity: call start_game and say the returned `say` text. After that the app runs each turn of the activity itself.
+- Memory activities: Remember the Order (game_id order_memory: memorize a row, it gets mixed up, put it back) and Find & Remember (game_id find_remember: follow one object). Call start_game and say the returned `say` text. After that the app runs each turn itself.
 Current game state: {state}"""
 
 STOP_RE = re.compile(r"\b(stop|quit|end the game|no more)\b", re.I)
@@ -38,7 +38,9 @@ def rule_plan(text: str, state: GameState) -> list[tuple[str, dict]]:
         return [("list_games", {})]
     if state.phase == "awaiting" and re.search(r"\b(done|finished|ready|check|that's it|thats it)\b", t):
         return [("check_arrangement", {})]
-    if re.search(r"find (and|&|n) remember|\b(play|start|try|do)\b.*\b(find|remember|memory|follow)", t):
+    if re.search(r"remember the order|memory game|\bmemori[sz]e\b|\b(play|start|try|do)\b.*\b(order|sequence)\b.*\bmemor", t):
+        return [("start_game", {"game_id": "order_memory"})]
+    if re.search(r"find (and|&|n) remember|\b(play|start|try|do)\b.*\b(find|follow)\b", t):
         return [("start_game", {"game_id": "find_remember"})]
     if re.search(r"\b(play|start|game|order|sort|shuffle|again|yes|sure)\b", t):
         return [("start_game", {"game_id": "reorder"})]
@@ -146,7 +148,7 @@ async def turn(state: GameState, history: list[dict], text: str, table_order: li
         made.append({"name": "alert_caregiver", "args": {}, "result": res})
         return "That's alright. We can take a break. I've asked a caregiver to come and sit with you.", made
 
-    if state.game == "find_remember" and state.phase == "exercise":
+    if state.game in ("find_remember", "order_memory") and state.phase == "exercise":
         # The exercise engine owns every turn of this activity, so its wording stays errorless.
         res = await run_tool(state, "exercise_step", {"said": text}, table_order)
         made.append({"name": "exercise_step", "args": {"said": text}, "result": res})

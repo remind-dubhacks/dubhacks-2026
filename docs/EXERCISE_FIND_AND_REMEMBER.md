@@ -1,4 +1,4 @@
-# Find & Remember: an object memory activity
+# Find & Remember and Remember the Order: object memory activities
 
 A short, caregiver-supervised activity. The person chooses an object, watches it being moved, finds it with as much help as they need, does something with it, and is invited to share a memory about it. Code: [`backend/app/games/find_remember.py`](../backend/app/games/find_remember.py). Tests: [`backend/tests/test_find_remember.py`](../backend/tests/test_find_remember.py).
 
@@ -8,13 +8,13 @@ A short, caregiver-supervised activity. The person chooses an object, watches it
 
 | Step | ReMind says (example) | Why |
 |---|---|---|
-| 1. Meet the objects | "We have the pink pen on the left and the white keycap on the right. Which one would you like us to keep an eye on?" | Choice and real, familiar objects (CST, Montessori) |
+| 1. Meet the objects | "We have the lipstick on the left and the white keycap on the right. Which one would you like us to keep an eye on?" | Choice and real, familiar objects (CST, Montessori) |
 | 2. An opinion, not a quiz | "What would you write with a pen like this?" | Opinions over facts, so there's no right answer (CST) |
-| 3. Watch the move | "Hands resting on your lap, please. The pink pen goes to the right." | Narrating the move supports encoding; hands away from the robot for safety |
-| 4. Find it | "Where is the pink pen now?" | Recall, kept short |
-| 4a. If unsure or a different spot | "That's okay. Is the pink pen on the left, or on the right?" | Errorless learning: give support before an error. Never "wrong". |
-| 4b. If still unsure | "Let's find it together. The pink pen is on the right, next to the keychain. There it is." | Every round ends in success |
-| 5. Do something | "Could you pick up the pink pen and put it in the tray?" | Hands-on, purposeful action (Montessori) |
+| 3. Watch the move | "Hands resting on your lap, please. The lipstick goes to the right." | Narrating the move supports encoding; hands away from the robot for safety |
+| 4. Find it | "Where is the lipstick now?" | Recall, kept short |
+| 4a. If unsure or a different spot | "That's okay. Is the lipstick on the left, or on the right?" | Errorless learning: give support before an error. Never "wrong". |
+| 4b. If still unsure | "Let's find it together. The lipstick is on the right, next to the keychain. There it is." | Every round ends in success |
+| 5. Do something | "Could you pick up the lipstick and put it in the tray?" | Hands-on, purposeful action (Montessori) |
 | 6. Share a memory (optional) | "Did you ever write letters or cards to someone special? You can skip this one if you like." | Reminiscence, always skippable, never corrected |
 | 7. Spaced recall (some rounds) | "What was the first thing we put in the tray?" | Spaced retrieval: the gap grows after success and shrinks after support |
 
@@ -23,6 +23,31 @@ A short, caregiver-supervised activity. The person chooses an object, watches it
 **Language rules, enforced by tests.** It never says *wrong, incorrect, mistake, fail, test, score* or "no,". It asks one question at a time, uses the person's choice whenever possible, and never corrects a personal memory.
 
 **Safety comes first in the code.** "Stop" ends everything. Words like *upset, scared, tired, I want to stop* pause the activity and alert a caregiver before any game logic runs.
+
+## Second activity: Remember the Order
+
+Code: [`backend/app/games/order_memory.py`](../backend/app/games/order_memory.py). Start it by saying "let's play the memory game" or "remember the order".
+
+| Step | ReMind says (example) | Why |
+|---|---|---|
+| 1. Study | "Let's look at these from left to right: the lipstick, the keycap and the keychain. Let's say them together: lipstick, keycap, keychain." | Spoken rehearsal in the person's own voice supports encoding |
+| 2. Say back | "Can you say them back to me?" Whatever they say: "Lovely" or "Let's say it once more together…" | Practice without judgment (errorless) |
+| 3. Shuffle | "Hands resting on your lap, please, while they get mixed up." | Safety; the robot or a caregiver moves them |
+| 4. Restore | "Can you put them back the way they were, from left to right?" | Recall plus a hands-on action |
+| 4a. Partly right | "The keycap is in just the right spot. Let's look at the middle together. Was it the lipstick, or the keychain?" | Praise what is right, then a two-way choice |
+| 4b. Still unsure | "Let's put them back together: the lipstick, the keycap and the keychain. There they are, just like before." | Every round ends restored |
+| 5. Memory (optional) | "Who did you like to get ready with before going out? You can skip this one." | Reminiscence |
+| 6. Spaced recall | "In our very first row, which one was on the left?" | Spaced retrieval |
+
+**How the order is read:** first from the camera (the left-to-right order of taught objects in the Robot Studio's live detection), then from the words if the person names the order. If neither is available, ReMind asks "Could you tell me the order?" rather than guessing. A camera reading that misses an object counts as "couldn't see", never as an answer.
+
+**Shuffles are random but fair:**
+- With 2 objects, the only possible shuffle is a swap.
+- With 3 objects, every one of the 5 mixes can occur: 3 easier swaps where one object stays put, and 2 harder ones where all three move.
+- The same mix never comes twice in a row.
+- After a round that needed help, the next mix is always an easier swap.
+
+**Difficulty:** it starts with 2 objects, moves to 3 after a row restored without help, and returns to 2 after a row that needed full help.
 
 ## Evidence it draws on
 
@@ -39,7 +64,7 @@ Evidence for these methods comes mainly from group programmes and studies of mil
 ## Running it
 
 - **Start:** say "Let's play Find and Remember" on the voice page. With a Gemini key, Gemini starts it via the `start_game` tool. Without a key, the offline rules start it. **Every later turn is run by the exercise engine, not the language model**, so the wording above is guaranteed.
-- **Objects:** `FIND_REMEMBER_OBJECTS=blue keychain,pink pen,white keycap`. Any names in `OBJECTS` work, including `tea box` and `coffee box`.
+- **Objects:** `FIND_REMEMBER_OBJECTS=blue keychain,lipstick,white keycap`. Any names in `OBJECTS` work, including `tea box` and `coffee box`.
 - **Who moves the objects:** `FIND_REMEMBER_MOVER` is one of:
   - `simulated`: prototype; the move is instant and on-screen.
   - `caregiver`: ReMind asks the caregiver to make the move, then the caregiver says "moved".

@@ -5,12 +5,17 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+import httpx
+
+from ..config import settings
 from ..games.find_remember import FindRemember
+from ..games.order_memory import OrderMemory, order_from_detections
 from ..games.reorder import MAX_TRIALS, evaluate, shuffled
 from ..vision.checker import read_order
 
 GAMES = {
     "reorder": {"name": "Reorder", "description": "The robot mixes up three objects and you put them back in order.", "enabled": True},
+    "order_memory": {"name": "Remember the Order", "description": "Look at a row of objects, watch them get mixed up, then put them back the way they were.", "enabled": True},
     "find_remember": {"name": "Find & Remember", "description": "Follow one object as it moves, find it, then share a memory about it.", "enabled": True},
     "memory_match": {"name": "Memory match", "description": "Coming soon", "enabled": False},
     "sort_by_colour": {"name": "Sort by colour", "description": "Coming soon", "enabled": False},
@@ -20,7 +25,7 @@ TARGET = ["cup", "apple", "book"]  # placeholder prop set
 
 # Find & Remember props (must be names known to games/find_remember.OBJECTS) and who moves them:
 # simulated (prototype: instant), caregiver (agent asks a caregiver to move them), robot (needs a trained skill).
-FR_OBJECTS = [o.strip() for o in os.getenv("FIND_REMEMBER_OBJECTS", "blue keychain,pink pen,white keycap").split(",") if o.strip()]
+FR_OBJECTS = [o.strip() for o in os.getenv("FIND_REMEMBER_OBJECTS", "blue keychain,lipstick,white keycap").split(",") if o.strip()]
 FR_MOVER = os.getenv("FIND_REMEMBER_MOVER", "simulated")
 DISTRESS_RE = re.compile(r"\b(upset|scared|frightened|tired|sad|don'?t like this|want to stop|leave me)\b", re.I)
 
@@ -46,7 +51,12 @@ class GameState:
             "target": self.target, "shuffledOrder": self.shuffled_order, "shuffleId": self.shuffle_id,
             "feedback": self.feedback, "result": self.result, "helpRequested": self.help_requested, "alerts": self.alerts,
         }
-        if self.fr is not None:
+        if isinstance(self.fr, OrderMemory):
+            v["exercise"] = {
+                "step": self.fr_step, "row": self.fr.current, "answer": self.fr.original,  # answer: caregiver view only
+                "level": self.fr.level, "round": self.fr.round, "mover": FR_MOVER, "summary": self.fr.summary(),
+            }
+        elif self.fr is not None:
             v["exercise"] = {
                 "step": self.fr_step, "layout": self.fr.layout, "tray": self.fr.tray, "target": self.fr.target,
                 "level": self.fr.level, "round": self.fr.round, "mover": FR_MOVER, "summary": self.fr.summary(),
@@ -61,7 +71,7 @@ TOOL_SCHEMAS = [
         "parameters": {"type": "object", "properties": {"game_id": {"type": "string", "enum": list(GAMES)}}, "required": ["game_id"]}}},
     {"type": "function", "function": {"name": "check_arrangement", "description": "Look at the table with the camera and judge the order. Call when the person says they are done.", "parameters": {"type": "object", "properties": {}}}},
     {"type": "function", "function": {
-        "name": "exercise_step", "description": "Find & Remember only: pass the person's exact words; returns the next thing to say.",
+        "name": "exercise_step", "description": "Find & Remember / Remember the Order: pass the person's exact words; returns the next thing to say.",
         "parameters": {"type": "object", "properties": {"said": {"type": "string"}}, "required": ["said"]}}},
     {"type": "function", "function": {"name": "alert_caregiver", "description": "Message a caregiver. Use if the person asks for help, seems upset or confused.", "parameters": {"type": "object", "properties": {"reason": {"type": "string"}}, "required": ["reason"]}}},
     {"type": "function", "function": {"name": "stop", "description": "Stop the game and the robot.", "parameters": {"type": "object", "properties": {}}}},
@@ -113,10 +123,50 @@ def _fr_advance(state: GameState, said: str) -> dict:
     return {"ok": True, "say": step.say, "expect": step.expect, "phase": step.phase, "moves": step.moves}
 
 
+async def camera_order(objects: list[str]) -> list[str] | None:
+    """Left-to-right order of the objects from the robot worker's live detection, if it's running."""
+    side = os.getenv("SIDE_CAMERA_INDEX", "0")
+    try:
+        async with httpx.AsyncClient(timeout=3) as c:
+            r = await c.get(f"{settings.robot_worker_url}/studio/vision/detections", params={"camera": side})
+        return order_from_detections(r.json()["detections"], objects) if r.status_code == 200 else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+async def _om_advance(state: GameState, said: str, table_order: list[str] | None) -> dict:
+    om: OrderMemory = state.fr
+    phase = om.phase
+    if phase == "study":
+        step = om.say_back(said)
+        if FR_MOVER == "simulated":
+            nxt = om.after_shuffle()
+            step.say, step.expect, step.phase = f"{step.say} {nxt.say}", nxt.expect, nxt.phase
+        else:
+            step.say += _moves_note(step)
+    elif phase == "shuffle":
+        step = om.after_shuffle()
+    elif phase == "restore":
+        observed = table_order or await camera_order(om.original)
+        step = om.check(said, observed)
+    elif phase == "reminisce":
+        step = om.shared(said)
+    elif phase == "recall":
+        step = om.recall(said)
+    else:
+        step = om.finish()
+    state.fr_step = step.to_dict()
+    if step.phase == "done":
+        state.phase, state.result = "complete", "correct"
+    return {"ok": True, "say": step.say, "expect": step.expect, "phase": step.phase, "moves": step.moves}
+
+
 async def run_tool(state: GameState, name: str, args: dict, table_order: list[str] | None) -> dict:
     if name == "exercise_step":
-        if state.game != "find_remember" or state.fr is None or state.phase != "exercise":
-            return {"ok": False, "error": "Find & Remember is not running"}
+        if state.game not in ("find_remember", "order_memory") or state.fr is None or state.phase != "exercise":
+            return {"ok": False, "error": "no memory activity is running"}
+        if state.game == "order_memory":
+            return await _om_advance(state, str(args.get("said", "")), table_order)
         return _fr_advance(state, str(args.get("said", "")))
 
     if name == "list_games":
@@ -131,8 +181,8 @@ async def run_tool(state: GameState, name: str, args: dict, table_order: list[st
             return {"ok": False, "error": f"{game['name']} is coming soon; only Reorder is available"}
         if state.phase in ("awaiting", "exercise"):
             return {"ok": False, "error": "a game is already running"}
-        if gid == "find_remember":
-            state.fr = FindRemember(objects=FR_OBJECTS)
+        if gid in ("find_remember", "order_memory"):
+            state.fr = FindRemember(objects=FR_OBJECTS) if gid == "find_remember" else OrderMemory(objects=FR_OBJECTS)
             state.game, state.phase, state.result, state.feedback = gid, "exercise", "none", ""
             step = state.fr.start()
             state.fr_step = step.to_dict()
