@@ -41,7 +41,7 @@ export class LiveVoice {
   async start(params: Record<string, string> = {}) {
     this.ctx = new AudioContext({ sampleRate: IN_RATE });
     this.stream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 },
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
     });
     const url = URL.createObjectURL(new Blob([WORKLET], { type: "application/javascript" }));
     await this.ctx.audioWorklet.addModule(url);

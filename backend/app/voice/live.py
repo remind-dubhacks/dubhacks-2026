@@ -18,30 +18,10 @@ from fastapi import WebSocket
 
 from ..config import settings
 from .agent import GEMINI_DECLS, STOP_RE
+from .prompts.voice_system_prompt import VOICE_SYSTEM_PROMPT
 from .tools import GAMES, GameState, run_tool
 
 log = logging.getLogger("remind.live")
-
-INSTRUCTIONS = """You are ReMind, a warm, patient companion for {name}, a person living with dementia, in a care home. A nurse set this up and is nearby.
-You are speaking out loud: use one or two SHORT, simple sentences, a calm pace, and never lists. No medical advice.
-There is a screen in front of {name}. It shows only what your tools put there: a photo, a few words, or nothing. Never mention buttons or ask them to touch anything.
-
-How to talk (Cognitive Stimulation Therapy principles):
-- Ask for opinions and feelings rather than facts: "What do you think of...", "Does this remind you of anything?"
-- Use memories as a way into the here and now. Follow what interests {name} and let them lead.
-- Never test, quiz or correct. Any answer is a good answer. If they are unsure, give a gentle hint, then reveal warmly.
-- Keep it fun and relaxed. Offer choices. Use their name now and then.
-- Keep the conversation moving: after talking about an item for a little while, move on yourself. After a game, offer another one.
-
-Games available today: {games}.
-- Famous faces (faces): call start_game. Ask what they notice and what the face brings to mind, then hint, then call reveal and chat about the person. Then call next_item.
-- Sayings (proverbs): call start_game, read the saying slowly and let them finish it. Call reveal to show the whole saying, chat about what it means to them, then next_item.
-- Sounds (sounds): call start_game and say only "Have a listen." then wait. When told the sound has finished, ask what it sounded like and what it reminds them of. Call reveal, chat, then next_item. Use play_sound if they want to hear it again.
-- Reorder (reorder): call start_game, then tell them the RIGHT order to put the objects in (target_order from the tool result; never call it the starting order) and ask them to say "done" when finished. When they are done, call check_arrangement. If wrong, kindly explain with the tool's reason and invite another try. If attempts_left is 0, gently reveal the correct order. If correct, praise them. Never claim the robot did something unless a tool result says so.
-After each item, call note_response with how engaged they were and one short note about what they shared.
-Use show_message for a short greeting or a warm sentence worth seeing. When a game ends, call end_game.
-If they ask for help, seem upset, frightened or unwell, call alert_caregiver and reassure them. If they want to stop, call stop.
-Be patient: people may speak slowly and pause. Do not rush them."""
 
 GREETING = ("({name} has just sat down. Call show_message with a short greeting that uses their name, then greet them warmly out loud "
             "in one short sentence, say you are ReMind, and offer one of today's games.)")
@@ -49,6 +29,14 @@ GOODBYE = "(The person stopped the session. Say a brief, kind goodbye in one sen
 NUDGE = "(It has been quiet for a while. Gently carry on: talk about the item, move to the next one, offer a game, or warmly check in.)"
 NUDGE_AFTER_S = 25.0  # silence before a nudge
 MAX_NUDGES = 3  # in a row with no reply; then rest the screen and wait for the person
+REMINDER = "Reminder: keep replies to one or two short sentences and respond directly to what the user just said."
+
+# Voice activity detection, chosen by GEMINI_LIVE_VAD. Slow, pausing speakers need a long silence before end of turn.
+VAD_PRESETS = {
+    "default": {"endOfSpeechSensitivity": "END_SENSITIVITY_LOW", "silenceDurationMs": 1200, "prefixPaddingMs": 100},
+    "fast": {"endOfSpeechSensitivity": "END_SENSITIVITY_LOW", "silenceDurationMs": 600, "prefixPaddingMs": 100},
+    "legacy": {"endOfSpeechSensitivity": "END_SENSITIVITY_LOW", "silenceDurationMs": 1200},  # before 2026-10-18
+}
 
 GAME_NAMES = {"faces": "famous faces", "proverbs": "sayings", "sounds": "sounds", "reorder": "the robot ordering game"}
 
@@ -57,20 +45,44 @@ def available() -> bool:
     return bool(settings.gemini_api_key)
 
 
-def _setup(name: str, games: list[str]) -> dict:
+def build_setup(name: str, games: list[str], *, prompt: str = VOICE_SYSTEM_PROMPT, vad: str | None = None,
+                temperature: float | None = None, max_output_tokens: int | None = None) -> dict:
+    """The one setup message for every Live connection. None means "use settings"; a negative temperature
+    or a max_output_tokens of 0 leaves that field out (server default)."""
+    vad = vad or settings.gemini_live_vad
+    if vad not in VAD_PRESETS:
+        raise ValueError(f"unknown GEMINI_LIVE_VAD preset {vad!r}; expected one of {sorted(VAD_PRESETS)}")
+    temperature = settings.gemini_live_temperature if temperature is None else temperature
+    max_output_tokens = settings.gemini_live_max_output_tokens if max_output_tokens is None else max_output_tokens
+    gen = {
+        "responseModalities": ["AUDIO"],
+        "speechConfig": {"voiceConfig": {"prebuiltVoiceConfig": {"voiceName": settings.gemini_live_voice}}},
+    }
+    if temperature >= 0:
+        gen["temperature"] = temperature
+    if max_output_tokens > 0:
+        gen["maxOutputTokens"] = max_output_tokens
     return {"setup": {
         "model": f"models/{settings.gemini_live_model}",
-        "generationConfig": {
-            "responseModalities": ["AUDIO"],
-            "speechConfig": {"voiceConfig": {"prebuiltVoiceConfig": {"voiceName": settings.gemini_live_voice}}},
-        },
-        "systemInstruction": {"parts": [{"text": INSTRUCTIONS.format(name=name, games=", ".join(GAME_NAMES[g] for g in games))}]},
+        "generationConfig": gen,
+        "systemInstruction": {"parts": [{"text": prompt.format(name=name, games=", ".join(GAME_NAMES[g] for g in games))}]},
         "tools": [{"functionDeclarations": GEMINI_DECLS}],
-        # Slow, pausing speakers: wait longer before deciding the turn is over.
-        "realtimeInputConfig": {"automaticActivityDetection": {"endOfSpeechSensitivity": "END_SENSITIVITY_LOW", "silenceDurationMs": 1200}},
+        "realtimeInputConfig": {"automaticActivityDetection": dict(VAD_PRESETS[vad])},
         "inputAudioTranscription": {},
         "outputAudioTranscription": {},
     }}
+
+
+def reminder_message() -> dict:
+    """Adds the brevity reminder to context. turnComplete=False: the model should not reply to it."""
+    return {"clientContent": {"turns": [{"role": "user", "parts": [{"text": REMINDER}]}], "turnComplete": False}}
+
+
+def should_remind(user_turns: int, last_reminded_turn: int, recent_words: list[int]) -> bool:
+    every, limit = settings.gemini_live_remind_every, settings.gemini_live_remind_words
+    periodic = every > 0 and user_turns > 0 and user_turns % every == 0 and user_turns != last_reminded_turn
+    wordy = len(recent_words) >= 2 and all(w > limit for w in recent_words[-2:])
+    return periodic or wordy
 
 
 async def run(ws: WebSocket) -> None:
@@ -88,6 +100,8 @@ async def run(ws: WebSocket) -> None:
     stopped = False
     last_activity = time.monotonic()
     nudges = 0
+    user_turns = last_reminded_turn = 0
+    recent_words: list[int] = []  # output word counts of recent model turns, for the brevity reminder
     url = f"{settings.gemini_live_url}?key={settings.gemini_api_key}"
 
     try:
@@ -107,8 +121,9 @@ async def run(ws: WebSocket) -> None:
             return res
 
         async def finalize_user() -> None:
-            nonlocal user_buf
+            nonlocal user_buf, user_turns
             if user_buf.strip():
+                user_turns += 1
                 await ws.send_json({"type": "user_text", "text": user_buf.strip()})
             user_buf = ""
 
@@ -123,7 +138,7 @@ async def run(ws: WebSocket) -> None:
             if say_goodbye:
                 await to_gem({"realtimeInput": {"text": GOODBYE}})
 
-        await to_gem(_setup(name, games))
+        await to_gem(build_setup(name, games))
 
         async def from_browser() -> None:
             nonlocal last_activity
@@ -157,7 +172,7 @@ async def run(ws: WebSocket) -> None:
                     await tool("end_game", {})
 
         async def from_gem() -> None:
-            nonlocal user_buf, ai_buf, stopped, last_activity, nudges
+            nonlocal user_buf, ai_buf, stopped, last_activity, nudges, recent_words, last_reminded_turn
             greeted = False
             async for raw in gem:
                 ev = json.loads(raw.decode() if isinstance(raw, bytes) else raw)
@@ -204,9 +219,13 @@ async def run(ws: WebSocket) -> None:
                 if sc.get("interrupted") or sc.get("turnComplete"):
                     if ai_buf.strip():
                         await ws.send_json({"type": "ai_done", "text": ai_buf.strip()})
+                        recent_words = (recent_words + [len(ai_buf.split())])[-2:]
                     ai_buf = ""
                     if sc.get("turnComplete"):
                         stopped = False  # ready for the next stop request
+                        if should_remind(user_turns, last_reminded_turn, recent_words):
+                            last_reminded_turn, recent_words = user_turns, []
+                            await to_gem(reminder_message())
 
         tasks = [asyncio.create_task(from_browser()), asyncio.create_task(from_gem()), asyncio.create_task(nudger())]
         try:

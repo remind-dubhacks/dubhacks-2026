@@ -15,6 +15,13 @@ class Settings:
     gemini_fallback_model: str = os.getenv("GEMINI_FALLBACK_MODEL", "gemini-flash-lite-latest")  # used on 429/503
     gemini_live_model: str = os.getenv("GEMINI_LIVE_MODEL", "gemini-3.8-live")
     gemini_live_voice: str = os.getenv("GEMINI_LIVE_VOICE", "Aoede")
+    gemini_live_temperature: float = float(os.getenv("GEMINI_LIVE_TEMPERATURE", "0.6"))
+    # Backstop only: counts audio tokens (~11 per spoken word) and cuts replies mid-sentence. 200 truncated ~40% of
+    # replies in scripts/eval_live.py; 800 is ~70 words, above the prompt's ~30-word target. 0 = unset.
+    gemini_live_max_output_tokens: int = int(os.getenv("GEMINI_LIVE_MAX_OUTPUT_TOKENS", "800"))
+    gemini_live_vad: str = os.getenv("GEMINI_LIVE_VAD", "default")  # default | fast | legacy (see live.VAD_PRESETS)
+    gemini_live_remind_every: int = int(os.getenv("GEMINI_LIVE_REMIND_EVERY", "8"))  # user turns between brevity reminders
+    gemini_live_remind_words: int = int(os.getenv("GEMINI_LIVE_REMIND_WORDS", "40"))  # remind if the last 2 replies exceed this
     gemini_live_url: str = os.getenv(
         "GEMINI_LIVE_URL",
         "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent",
