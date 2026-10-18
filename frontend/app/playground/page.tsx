@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { API } from "@/lib/api";
 import "./playground.css";
+import { Board, Keycap } from "@/features/shared/Keycap";
 
 type Ev = { kind: string; obj?: string; spot?: number; right?: boolean; level?: number };
 type Exercise = {
@@ -18,7 +19,15 @@ type FeedItem = { t: number; who: string; text?: string; kind?: string; event?: 
 type Robot = { reachable: boolean; mode?: string; ready?: boolean; busy?: boolean; motors?: Record<string, { ok: boolean; tempC: number }> };
 
 const SPOT = ["left", "middle", "right"];
-const SWATCH: Record<string, string> = { black: "#23262a", white: "#f6f3ea", purple: "#8d72c9" };
+const STEPS = [
+  { label: "Look & say", phases: ["study", "idle"] },
+  { label: "Robot mixes", phases: ["shuffle"] },
+  { label: "Put back", phases: ["restore"] },
+  { label: "Memory", phases: ["reminisce", "recall"] },
+  { label: "Done", phases: ["done"] },
+];
+const BADGE: Record<string, string> = { robot: "⚙", camera: "◉", agent: "R", you: "P" };
+const WHO: Record<string, string> = { robot: "Robot", camera: "Camera", agent: "ReMind", you: "Player" };
 const now = () => new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 
 function fromFeed(f: FeedItem): LogLine | null {
@@ -153,107 +162,151 @@ export default function Playground() {
   }, [robot?.reachable]);
 
   const hot = robot?.motors ? Math.max(...Object.values(robot.motors).map((m) => m.tempC ?? 0)) : 0;
-  const robotLine = robot?.reachable ? `${robot.mode} mode, ${robot.ready ? (robot.busy ? "busy" : "ready") : "not ready"}` : "offline";
+  const robotLine = robot?.reachable ? `${robot.mode} mode · ${robot.ready ? (robot.busy ? "busy" : "ready") : "not ready"}` : "offline";
+  const stepAt = viewEx ? Math.max(0, STEPS.findIndex((st) => st.phases.includes(viewEx.phase))) : -1;
+  const moving = viewEx?.robot?.status === "moving";
+  const headline = !viewEx ? "" : moving ? (viewEx.robot?.last === "paused_for_hand" ? "Robot is waiting: a hand is on the table" : "The robot is mixing the keyrings…")
+    : viewEx.phase === "restore" ? "Player's turn: put them back the way they were" : viewEx.phase === "study" ? "Look at the row and say it together"
+    : viewEx.phase === "done" ? "Game finished" : "Chatting about a memory";
 
   return (
     <main className="pg">
-      <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:wght@400;600&display=swap" precedence="default" />
-      <div className="pg-face pg-head">
-        <div>
-          <h1>Robot playground</h1>
-          <p className="pg-muted">Remember the Order, live: what the camera sees, what the robot does, and when the companion helps. Tap or type instead of talking.</p>
-        </div>
-        <a className="pg-chip" href="/patient">Back to setup</a>
-      </div>
-
-      <div className="pg-face pg-bar">
-        <span className="pg-stat"><span className={`pg-dot ${robot?.ready ? "on" : robot ? "off" : "wait"}`} />Robot: {robotLine}</span>
-        {robot?.motors && <span className={`pg-stat ${hot >= 60 ? "hot" : hot >= 55 ? "warm" : ""}`}>Hottest motor {hot} °C</span>}
-        <span className="pg-stat"><span className={`pg-dot ${camera ? "on" : camera === false ? "off" : "wait"}`} />Camera: {camera === null ? "starts with the game" : camera ? "watching the table" : "can't see the table"}</span>
-        <div className="pg-controls">
-          <div className="pg-well">
-            <select aria-label="Who moves the keyrings" value={mover} onChange={(e) => setMover(e.target.value as "simulated" | "robot")} disabled={!!ex && ex.phase !== "done"}>
-              <option value="simulated">Simulated (no motion)</option>
-              <option value="robot" disabled={!robot?.ready}>The robot arm</option>
-            </select>
+      <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:wght@400;600;700&display=swap" precedence="default" />
+      <header className="pg-hero">
+        <div className="pg-brand">
+          <span className="pg-logo" aria-hidden="true"><Keycap name="purple" size={44} /></span>
+          <div>
+            <h1>Robot playground</h1>
+            <p>Remember the Order, live: what the camera sees, what the robot does, and when the companion helps.</p>
           </div>
-          <button className="pg-start" onClick={start}>{ex ? "Restart" : "Start game"}</button>
-          {ex && <button className="pg-chip" onClick={() => post("stop", { sessionId: sid }).then(() => { setEx(null); add({ t: now(), who: "you", text: "Stopped" }); })}>Stop</button>}
         </div>
-      </div>
-      {mover === "robot" && <p className="pg-warn">The arm will move. Keep the emergency stop within reach and hands off the table while it moves.</p>}
+        <a className="pg-chip" href="/patient">← Back to setup</a>
+      </header>
+
+      <section className="pg-cards">
+        <div className="pg-face pg-card">
+          <span className="pg-card-label">Robot arm</span>
+          <span className="pg-card-value"><span className={`pg-dot ${robot?.ready ? "on" : robot ? "off" : "wait"}`} />{robotLine}</span>
+          {robot?.motors && (
+            <div className="pg-gauges" title="Follower motor temperatures (pauses at 60 °C)">
+              {Object.entries(robot.motors).map(([k, m]) => (
+                <span key={k} className="pg-gauge">
+                  <span className="pg-gauge-bar"><span style={{ height: `${Math.min(100, Math.max(8, ((m.tempC - 30) / 35) * 100))}%` }}
+                    className={m.tempC >= 60 ? "hot" : m.tempC >= 55 ? "warm" : ""} /></span>
+                  <small>{k.split("_").map((w) => w[0]).join("").toUpperCase()}</small>
+                </span>
+              ))}
+              <span className={`pg-temp ${hot >= 60 ? "hot" : hot >= 55 ? "warm" : ""}`}>{hot}°C</span>
+            </div>
+          )}
+        </div>
+        <div className="pg-face pg-card">
+          <span className="pg-card-label">Camera</span>
+          <span className="pg-card-value"><span className={`pg-dot ${camera ? "on" : camera === false ? "off" : "wait"}`} />
+            {camera === null ? "starts with the game" : camera ? "watching the table" : "can't see the table"}</span>
+          <span className="pg-muted small">Judges a placement after 2 s of stillness with no hand on the table.</span>
+        </div>
+        <div className="pg-face pg-card pg-card-controls">
+          <span className="pg-card-label">Test game</span>
+          <div className="pg-segment" role="radiogroup" aria-label="Who moves the keyrings">
+            {(["simulated", "robot"] as const).map((m) => (
+              <button key={m} role="radio" aria-checked={mover === m} className={mover === m ? "on" : ""}
+                disabled={(!!ex && ex.phase !== "done") || (m === "robot" && !robot?.ready)} onClick={() => setMover(m)}>
+                {m === "simulated" ? "Simulated" : "Robot arm"}
+              </button>
+            ))}
+          </div>
+          <div className="pg-row-buttons">
+            <button className="pg-start" onClick={start}>{ex ? "Restart" : "Start game"}</button>
+            {ex && <button className="pg-chip" onClick={() => post("stop", { sessionId: sid }).then(() => { setEx(null); add({ t: now(), who: "you", text: "Stopped" }); })}>Stop</button>}
+          </div>
+        </div>
+      </section>
+
+      {mover === "robot" && <p className="pg-warn">⚠ The arm will move. Keep the emergency stop within reach and hands off the table while it moves.</p>}
       {err && <p className="pg-error">{err}</p>}
       {live?.active && (
         <div className="pg-face pg-live">
-          <span className="pg-stat"><span className="pg-dot on" />Live patient session: {live.name}{live.game ? ` · ${live.game.replace("_", " ")}` : ""}</span>
+          <span className="pg-pulse" aria-hidden="true" />
+          <span className="pg-stat">Live patient session: {live.name}{live.game ? ` · ${live.game.replace("_", " ")}` : ""}</span>
           {ex ? <span className="pg-muted">Stop your test game to follow it.</span>
             : <button className="pg-chip" onClick={() => setFollow((f) => !f)}>{follow ? "Following live (read-only)" : "Follow it here"}</button>}
         </div>
       )}
 
-      <div className="pg-grid">
-        <section className="pg-face">
-          <h2>Table</h2>
-          {!viewEx ? <p className="pg-muted">{live?.active ? `${live.name} is doing another activity right now.` : "Start a game here, or start Remember the Order on the patient screen to follow it live."}</p> : (
+      <div className="pg-main">
+        <section className="pg-face pg-table">
+          {!viewEx ? (
+            <div className="pg-empty">
+              <Board row={["black keycap", "white keycap", "purple keycap"]} labels={false} size={64} />
+              <p>{live?.active ? `${live.name} is doing another activity right now.` : "Start a test game, or start Remember the Order on the patient screen to follow it here live."}</p>
+            </div>
+          ) : (
             <>
-              <p className="pg-status">{viewEx.robot?.status === "moving" ? "The robot is moving…" : viewEx.phase === "restore" ? "Player's turn: putting the row back" : `Phase: ${viewEx.phase}`}</p>
-              <div className="pg-row" style={{ gridTemplateColumns: `repeat(${viewEx.row.length}, 1fr)` }}>
-                {viewEx.row.map((o, i) => {
-                  const right = o === viewEx.answer[i];
-                  const judged = viewEx.phase === "restore";
-                  return (
-                    <div key={i} className={`pg-slot ${judged ? (right ? "right" : "off") : ""}`}>
-                      <span className="pg-key" style={{ background: SWATCH[o?.split(" ")[0]] ?? "#c9cfc6" }} />
-                      <b>{o}</b>
-                      <small>{(viewEx.row.length === 2 ? ["left", "right"] : SPOT)[i]}{judged ? (right ? " · right spot" : ` · belongs: ${viewEx.answer[i]}`) : ""}</small>
-                    </div>
-                  );
-                })}
+              <ol className="pg-steps">
+                {STEPS.map((st, i) => (
+                  <li key={st.label} className={i < stepAt ? "done" : i === stepAt ? "now" : ""}><span>{i < stepAt ? "✓" : i + 1}</span>{st.label}</li>
+                ))}
+              </ol>
+              <h2 className={`pg-headline${moving ? " moving" : ""}`}>{headline}</h2>
+              <Board row={viewEx.row} answer={viewEx.answer} judge={viewEx.phase === "restore" && !moving} size={84} />
+              <div className="pg-answer">
+                <span className="pg-card-label">Original order · caregiver only</span>
+                <span className="pg-mini-row">{viewEx.answer.map((o, i) => <span key={i}><Keycap name={o} size={26} />{o.split(" ")[0]}</span>)}</span>
               </div>
-              <p className="pg-muted">Original order (caregiver only): {viewEx.answer.join(" · ")}</p>
-              {viewEx.say && <p className="pg-say">“{viewEx.say}”</p>}
-              {!following && (<><div className="pg-actions">
-                {viewEx.options.map((o) => <button key={o} className="pg-chip" onClick={() => say(o)}>{o}</button>)}
-                {viewEx.phase === "study" && <button className="pg-chip" onClick={() => say(viewEx.answer.join(", "))}>Say them back</button>}
-                {viewEx.phase === "restore" && <button className="pg-chip" onClick={() => say("done")}>I&apos;m done</button>}
-                {(viewEx.phase === "reminisce" || viewEx.phase === "recall") && <button className="pg-chip" onClick={() => say("skip")}>Skip</button>}
-              </div>
-              <form className="pg-say-form" onSubmit={(e) => { e.preventDefault(); say(typed); setTyped(""); }}>
-                <div className="pg-well"><input value={typed} onChange={(e) => setTyped(e.target.value)} placeholder="Type what the player says…" /></div>
-                <button type="submit" className="pg-chip">Say</button>
-              </form></>)}
+              {viewEx.say && (
+                <div className="pg-bubble"><span className="pg-avatar" aria-hidden="true">R</span><p>{viewEx.say}</p></div>
+              )}
+              {!following && (<>
+                <div className="pg-actions">
+                  {viewEx.options.map((o) => <button key={o} className="pg-option" onClick={() => say(o)}><Keycap name={o} size={30} />{o}</button>)}
+                  {viewEx.phase === "study" && <button className="pg-chip" onClick={() => say(viewEx.answer.join(", "))}>Say them back</button>}
+                  {viewEx.phase === "restore" && <button className="pg-chip" onClick={() => say("done")}>I&apos;m done</button>}
+                  {(viewEx.phase === "reminisce" || viewEx.phase === "recall") && <button className="pg-chip" onClick={() => say("skip")}>Skip</button>}
+                </div>
+                <form className="pg-say-form" onSubmit={(e) => { e.preventDefault(); say(typed); setTyped(""); }}>
+                  <div className="pg-well"><input value={typed} onChange={(e) => setTyped(e.target.value)} placeholder="Type what the player says…" /></div>
+                  <button type="submit" className="pg-chip">Say</button>
+                </form>
+              </>)}
               {viewEx.summary && viewEx.summary.rounds > 0 && (
-                <p className="pg-muted">Rows {viewEx.summary.rounds} · alone {viewEx.summary.restoredAlone} · with a choice {viewEx.summary.restoredWithChoice} · together {viewEx.summary.restoredTogether}</p>
+                <div className="pg-tally">
+                  <span><b>{viewEx.summary.restoredAlone}</b> alone</span>
+                  <span><b>{viewEx.summary.restoredWithChoice}</b> with a choice</span>
+                  <span><b>{viewEx.summary.restoredTogether}</b> together</span>
+                </div>
               )}
             </>
           )}
         </section>
 
-        <section className="pg-face">
-          <h2>Robot camera</h2>
-          {robot?.reachable ? (
-            <>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img className="pg-cam" src={`${API}/api/play/camera.jpg?f=${frame}`} alt="Live view of the table from the robot's side camera"
-                onLoad={() => setCamOk(true)} onError={() => setCamOk(false)} style={{ display: camOk ? "block" : "none" }} />
-              {!camOk && <p className="pg-muted">The camera is busy or unavailable right now (for example while a recording runs).</p>}
-              <p className="pg-muted small">Circles: each keyring and the slot the game reads. Red frame: a hand is on the table, so the robot waits.</p>
-            </>
-          ) : <p className="pg-muted">The robot worker is offline, so there is no camera view.</p>}
-        </section>
+        <div className="pg-side">
+          <section className="pg-face">
+            <div className="pg-sec-head"><h2>Robot camera</h2>{robot?.reachable && camOk && <span className="pg-live-pill">● LIVE</span>}</div>
+            {robot?.reachable ? (
+              <>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img className="pg-cam" src={`${API}/api/play/camera.jpg?f=${frame}`} alt="Live view of the table from the robot's side camera"
+                  onLoad={() => setCamOk(true)} onError={() => setCamOk(false)} style={{ display: camOk ? "block" : "none" }} />
+                {!camOk && <div className="pg-cam-off">Camera busy right now (for example while a recording runs).</div>}
+                <p className="pg-muted small">Circles: each keyring and the slot the game reads. Red frame: a hand is on the table, so the robot waits.</p>
+              </>
+            ) : <div className="pg-cam-off">Robot worker offline: no camera view.</div>}
+          </section>
 
-        <section className="pg-face pg-feed">
-          <h2>Live feed</h2>
-          <p className="pg-muted small">Placements count once the row is still for 2 s with no hand on the table. A wrong spot gets 4 s before any help, then a choice of two. Never &ldquo;wrong&rdquo;.</p>
-          <ol>
-            {viewLog.length === 0 && <li className="pg-muted">Nothing yet.</li>}
-            {viewLog.map((l, i) => (
-              <li key={i} className={l.tone ?? ""}>
-                <small>{l.t}</small> <span className={`pg-who ${l.who}`}>{l.who}</span> {l.text}
-              </li>
-            ))}
-          </ol>
-        </section>
+          <section className="pg-face pg-feed">
+            <div className="pg-sec-head"><h2>Live feed</h2><span className="pg-muted small">newest first</span></div>
+            <ol>
+              {viewLog.length === 0 && <li className="pg-muted">Nothing yet.</li>}
+              {viewLog.map((l, i) => (
+                <li key={i} className={l.tone ?? ""}>
+                  <span className={`pg-badge ${l.who}`} aria-hidden="true">{BADGE[l.who]}</span>
+                  <div><span className="pg-who">{WHO[l.who]}</span> <small>{l.t}</small><p>{l.text}</p></div>
+                </li>
+              ))}
+            </ol>
+          </section>
+        </div>
       </div>
     </main>
   );

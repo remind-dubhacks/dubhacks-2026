@@ -4,34 +4,27 @@
 // The outgoing layer fades out while the incoming one fades in; nothing slides.
 import { useEffect, useRef, useState } from "react";
 import type { Screen } from "@/lib/voice";
+import { Board, Keycap } from "@/features/shared/Keycap";
 
 const FADE_MS = 1200;
 const FONT = "https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:wght@400;600&display=swap";
 
 type Layer = { id: number; screen: Screen; visible: boolean };
 
-// Keyring colours for the robot game (game object names from backend/app/games/shuffles.py).
-const SWATCH: Record<string, string> = { black: "#23262a", white: "#f6f3ea", purple: "#8d72c9" };
-const swatch = (name: string) => SWATCH[name.split(" ")[0]] ?? "#c9cfc6";
-const SPOTS = ["Left", "Middle", "Right"];
-
 // Remember the Order: the row as the camera and the game see it, what the robot is doing, and the current
 // prompt. Updated live by the relay as the person moves things on the table.
 function TableView({ screen }: { screen: Extract<Screen, { kind: "table" }> }) {
-  const spots = screen.row.length === 2 ? ["Left", "Right"] : SPOTS;
   return (
     <div className="calm-table">
       {screen.status && <p className="calm-table-status">{screen.status}</p>}
-      <div className="calm-row">
-        {screen.row.map((o, i) => (
-          <div key={i} className="calm-slot">
-            <span className="calm-key" style={{ background: o ? swatch(o) : "transparent" }} />
-            <span className="calm-slot-name">{o ?? "?"}</span>
-            <span className="calm-slot-spot">{spots[i]}</span>
-          </div>
-        ))}
-      </div>
-      {screen.options.length > 0 && <p className="calm-table-choice">{screen.options.join("  ·  or  ·  ")}</p>}
+      <div className="calm-board"><Board row={screen.row} parking={false} size={160} /></div>
+      {screen.options.length > 0 && (
+        <div className="calm-choices">
+          {screen.options.map((o, i) => (
+            <span key={o} className="calm-choice">{i > 0 && <em>or</em>}<Keycap name={o} size={56} />{o.split(" ")[0]}</span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

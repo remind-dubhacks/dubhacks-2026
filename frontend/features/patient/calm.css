@@ -318,3 +318,10 @@
 .robot-dot.wait { background: #d8c48a; animation: robot-wait 1.4s ease-in-out infinite; }
 @keyframes robot-wait { 50% { opacity: 0.35; } }
 @media (prefers-reduced-motion: reduce) { .robot-dot.wait { animation: none; } }
+
+.calm-board { width: 100%; font-size: min(3.6vw, 3.2vh); }
+.calm-board .kc-board { background: rgba(255, 255, 255, 0.45); }
+.calm-board .kc { width: min(16vw, 20vh) !important; height: min(16vw, 20vh) !important; }
+.calm-choices { display: flex; align-items: center; justify-content: center; gap: min(3vw, 28px); font-size: min(4.4vw, 3.8vh); font-weight: 600; }
+.calm-choice { display: inline-flex; align-items: center; gap: 14px; text-transform: capitalize; }
+.calm-choice em { font-style: normal; font-weight: 400; color: var(--ink-muted); margin-right: min(3vw, 28px); }
