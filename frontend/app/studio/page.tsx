@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { studio, workerUrl, type ArmStatus, type Dataset, type StudioStatus, type UploadState } from "@/lib/studio";
+import { studio, workerUrl, type ArmStatus, type Dataset, type MotorHealth, type StudioStatus, type UploadState } from "@/lib/studio";
 
 const MIN_EPISODES = 50; // Perceptron mentors: ~50 demonstrations is the practical minimum
 
@@ -52,6 +52,7 @@ export default function Studio() {
   const [remote, setRemote] = useState<Record<string, unknown> | null>(null);
   const [datasetId, setDatasetId] = useState("");
   const [steps, setSteps] = useState(1000);
+  const [health, setHealth] = useState<Awaited<ReturnType<typeof studio.health>> | null>(null);
   const [jobs, setJobs] = useState<Record<string, unknown>[]>([]);
   const [deployments, setDeployments] = useState<Record<string, unknown>[]>([]);
 
@@ -154,7 +155,21 @@ export default function Studio() {
           </p>
           <div className="row">
             <button className="stop" onClick={() => run(studio.stop)} disabled={!busy}>Stop</button>
+            <button onClick={() => run(async () => setHealth(await studio.health()))} disabled={busy}>Check motors</button>
           </div>
+          {health && (
+            <div className="small">
+              {Object.entries(health).map(([arm, motors]) => (
+                <div key={arm}>
+                  <strong>{arm}:</strong>{" "}
+                  {typeof motors.error === "string" ? <span className="warn">{motors.error}</span> :
+                    Object.entries(motors as Record<string, MotorHealth>).map(([m, h]) => (
+                      <span key={m} className={h.ok ? "" : "warn"}>{m.replace("_", " ")} {h.ok ? `${h.tempC}°` : `⚠ ${h.problem}`} · </span>
+                    ))}
+                </div>
+              ))}
+            </div>
+          )}
           {!busy && p?.exitCode != null && p.exitCode !== 0 && <p className="small warn">Last {p.kind} exited with code {p.exitCode}. See the log.</p>}
         </div>
       </div>

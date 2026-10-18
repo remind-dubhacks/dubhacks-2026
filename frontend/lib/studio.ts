@@ -33,6 +33,8 @@ export type Dataset = {
   error?: string;
 };
 
+export type MotorHealth = { ok: boolean; tempC?: number; problem?: string | null };
+
 export type UploadState = { phase: string; done: number; total: number; datasetId?: string; error?: string };
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
@@ -58,6 +60,7 @@ export const studio = {
   logs: (since: number) => req<{ lines: { seq: number; line: string }[]; last: number }>(`/studio/logs?since=${since}`),
   cameras: () => req<{ index: number; width: number; height: number }[]>("/studio/cameras"),
   cameraUrl: (i: number) => `${WORKER}/studio/camera/${i}.mjpg`,
+  health: () => req<Record<string, Record<string, MotorHealth | string>>>("/studio/health"),
   releaseCameras: () => post("/studio/cameras/release"),
   setCameras: (side: number, wrist: number) => post("/studio/config/cameras", { side, wrist }),
   teleop: (rerun = true) => post("/studio/teleop", { cameras: true, rerun }),

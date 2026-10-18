@@ -142,10 +142,49 @@ def robot_args(cameras: bool = True) -> list[str]:
     return args
 
 
+MOTORS = ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll", "gripper"]
+
+
+def motor_health(port: str) -> dict:
+    """Ping each servo and read temperature. Feetech servos latch errors such as overload until
+    their power is cut, and then stop answering LeRobot's handshake."""
+    import scservo_sdk as scs
+
+    ph, pk = scs.PortHandler(port), scs.PacketHandler(0)
+    if not ph.openPort():
+        return {"error": "could not open port"}
+    ph.setBaudRate(1_000_000)
+    out = {}
+    try:
+        for i, name in enumerate(MOTORS, start=1):
+            model, comm, err = pk.ping(ph, i)
+            if comm != scs.COMM_SUCCESS:
+                out[name] = {"ok": False, "problem": "no reply"}
+                continue
+            temp, _, _ = pk.read1ByteTxRx(ph, i, 63)
+            problem = pk.getRxPacketError(err).replace("[RxPacketError] ", "") if err else None
+            out[name] = {"ok": not problem and temp < 60, "tempC": temp, "problem": problem or ("hot" if temp >= 65 else None)}
+    finally:
+        ph.closePort()
+    return out
+
+
+@router.get("/health")
+def health() -> dict:
+    if proc.running:
+        raise HTTPException(409, "arms are in use by LeRobot")
+    return {arm: motor_health(env(key)) if Path(env(key)).exists() else {"error": "not connected"}
+            for arm, key in (("follower", "SO101_PORT"), ("leader", "LEADER_PORT"))}
+
+
 def require_ports() -> None:
     for name in ("SO101_PORT", "LEADER_PORT"):
         if not env(name) or not Path(env(name)).exists():
             raise HTTPException(400, f"{name} is not set or not connected ({env(name) or 'empty'})")
+    bad = [f"{arm} {m}: {h.get('problem')}" for arm, motors in health().items() if "error" not in motors
+           for m, h in motors.items() if not h["ok"]]
+    if bad:
+        raise HTTPException(409, "Motor problem: " + "; ".join(bad) + ". Unplug that arm's DC power for 10 s (and let a hot motor cool), then retry.")
     release_cameras()
 
 
