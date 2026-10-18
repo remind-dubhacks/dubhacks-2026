@@ -29,7 +29,8 @@ async def send_alert(kind: str, session_id: str, message: str, to: str = "", pat
     if not to:
         return False
     who = f"{patient}: " if patient else ""
-    when = datetime.now().astimezone().strftime("%-I:%M %p")  # server's local time, e.g. "2:41 PM"
+    now = datetime.now().astimezone()  # server's local time, e.g. "2:41 PM" (no %-I: it fails on Windows)
+    when = f"{now.hour % 12 or 12}:{now:%M %p}"
     error = await send_text(to, f"ReMind alert, {when}, {who}{message}")
     if error:
         log.warning("Photon send failed: %s", error)

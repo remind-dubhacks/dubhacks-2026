@@ -21,6 +21,7 @@ from ..config import settings
 from ..games import faces, proverbs, sounds
 from ..games.find_remember import FindRemember
 from ..games.order_memory import OrderMemory, order_from_detections
+from ..games.personalize import pick
 from ..games.shuffles import CAMERA_NAMES, ROBOT_START, fix_for
 from ..games.table_watch import TableWatch
 from ..games.reorder import MAX_TRIALS, evaluate, shuffled
@@ -35,6 +36,7 @@ GAMES = {
     "sounds": {"name": "Sounds", "description": "Listen to an everyday sound and talk about it.", "enabled": True},
 }
 SCREEN_GAMES = {"faces": faces.ITEMS, "proverbs": proverbs.ITEMS, "sounds": sounds.ITEMS}
+PERSONALIZED = ("faces", "sounds")  # chosen per person from their care profile and memories
 MAX_MESSAGE_WORDS = 12  # design.md: a message is 12 words at most
 REST = {"kind": "rest"}
 
@@ -64,6 +66,9 @@ class GameState:
     caregiver_phone: str = ""  # E.164; alerts are texted here when set
     session_id: str = ""
     enabled_games: list[str] = field(default_factory=lambda: list(GAMES))
+    profile: dict = field(default_factory=dict)  # care profile (models.CareProfile) and memories pick the items
+    memories: list[str] = field(default_factory=list)
+    items: list[dict] = field(default_factory=list)  # this run of the screen game, in play order
     item_index: int = 0
     screen: dict = field(default_factory=lambda: dict(REST))  # {kind: rest|message|photo|photo_caption, text?, photo?, caption?}
     sound: dict | None = None  # {src, id}; id bumps so the page replays the same clip
@@ -167,7 +172,7 @@ TOOL_SCHEMAS = [
     {"type": "function", "function": {
         "name": "exercise_step", "description": "Find & Remember / Remember the Order: pass the person's exact words; returns the next thing to say.",
         "parameters": {"type": "object", "properties": {"said": {"type": "string"}}, "required": ["said"]}}},
-    {"type": "function", "function": {"name": "alert_caregiver", "description": "Text the caregiver. Use when the person says anything concerning: asks for help, pain, a fall, feeling unwell, fear, distress, confusion about where they are, wanting to leave, or hurting themselves. reason = a short plain summary of what they said and why it is concerning (one or two sentences, no diagnosis).", "parameters": {"type": "object", "properties": {"reason": {"type": "string"}}, "required": ["reason"]}}},
+    {"type": "function", "function": {"name": "alert_caregiver", "description": "Text the caregiver / nurse. Use when the person asks for the nurse or a caregiver, asks you to text or call someone, needs something (thirsty, hungry, the toilet, cold), or says anything concerning: asks for help, pain, a fall, feeling unwell, fear, distress, confusion about where they are, wanting to leave, or hurting themselves. reason = a short plain summary of what they said and why it is concerning (one or two sentences, no diagnosis).", "parameters": {"type": "object", "properties": {"reason": {"type": "string"}}, "required": ["reason"]}}},
     {"type": "function", "function": {"name": "stop", "description": "Stop the game and the robot.", "parameters": {"type": "object", "properties": {}}}},
     {"type": "function", "function": {"name": "next_item", "description": "Screen games: move on to the next photo, saying or sound. Call after you have talked about the current one.", "parameters": {"type": "object", "properties": {}}}},
     {"type": "function", "function": {"name": "reveal", "description": "Screen games: show the answer on screen (the person's name, the full saying, or what the sound was). Use when the person is unsure or has answered.", "parameters": {"type": "object", "properties": {}}}},
@@ -196,7 +201,7 @@ TOOL_INFO = {
     "start_game": {"status": "mock", "example": "Let's play the ordering game.", "does": "Starts a game. Screen games are real; the Reorder robot shuffle is simulated in software for now."},
     "check_arrangement": {"status": "mock", "example": "I'm done.", "does": "Judges the order, counts tries (max 3), explains mistakes. No camera yet, so it always reads the table as correct."},
     "exercise_step": {"status": "real", "example": "The keycap, then the lipstick.", "does": "Runs the next turn of Find & Remember or Remember the Order."},
-    "alert_caregiver": {"status": "real", "example": "I need help.", "does": "Records a short summary for the nurse and texts the caregiver (Photon) if a phone number was entered."},
+    "alert_caregiver": {"status": "real", "example": "I'm thirsty. / Text the nurse.", "does": "Records a short summary for the nurse and texts the caregiver (Photon) if a phone number was entered."},
     "stop": {"status": "real", "example": "Stop.", "does": "Ends the game. Also triggered directly by the word 'stop', without the AI."},
     "next_item": {"status": "real", "example": "Let's see the next one.", "does": "Moves a screen game to its next item; clears the screen after the last."},
     "reveal": {"status": "real", "example": "Who is it?", "does": "Shows the name, the full saying, or what the sound was."},
@@ -228,8 +233,10 @@ def _message(text: str) -> dict:
 
 def _show_item(state: GameState) -> dict:
     """Put the current screen-game item on screen and return what the model needs to talk about it."""
-    item = SCREEN_GAMES[state.game][state.item_index]
-    out = {"ok": True, "item": state.item_index + 1, "of": len(SCREEN_GAMES[state.game]), "talking_points": item["talking_points"]}
+    item = state.items[state.item_index]
+    out = {"ok": True, "item": state.item_index + 1, "of": len(state.items), "talking_points": item["talking_points"]}
+    if item.get("why"):
+        out["why"] = f"Chosen because of their interest in: {', '.join(item['why'])}. Gently link it to their life if they enjoy it."
     if state.game == "faces":
         state.screen = {"kind": "photo", "photo": item["photo"]}
         return {**out, "person": item["name"],
@@ -560,6 +567,7 @@ async def run_tool(state: GameState, name: str, args: dict, table_order: list[st
                     "note": "Say the 'say' text. The app runs every later turn of this game itself."}
         if gid in SCREEN_GAMES:
             state.phase, state.item_index = "playing", 0
+            state.items = pick(SCREEN_GAMES[gid], state.profile, state.memories) if gid in PERSONALIZED else list(SCREEN_GAMES[gid])
             return _show_item(state)
         state.phase, state.target = "awaiting", list(TARGET)
         await shuffle(state)
@@ -569,10 +577,10 @@ async def run_tool(state: GameState, name: str, args: dict, table_order: list[st
     if name in ("next_item", "reveal", "play_sound"):
         if state.phase != "playing" or state.game not in SCREEN_GAMES:
             return {"ok": False, "error": "no screen game is running"}
-        item = SCREEN_GAMES[state.game][state.item_index]
+        item = state.items[state.item_index]
         if name == "next_item":
             state.sound = None
-            if state.item_index + 1 >= len(SCREEN_GAMES[state.game]):
+            if state.item_index + 1 >= len(state.items):
                 state.phase, state.result, state.screen = "complete", "finished", dict(REST)
                 return {"ok": True, "finished": True, "note": "That was the last one. Thank them warmly and offer another game or a chat."}
             state.item_index += 1
@@ -602,7 +610,7 @@ async def run_tool(state: GameState, name: str, args: dict, table_order: list[st
         return {"ok": True}
 
     if name == "note_response":
-        item = SCREEN_GAMES[state.game][state.item_index]["id"] if state.game in SCREEN_GAMES else None
+        item = state.items[state.item_index]["id"] if state.game in SCREEN_GAMES and state.items else None
         engagement = args.get("engagement") if args.get("engagement") in ("engaged", "some", "withdrawn") else "some"
         state.observations.append({"game": state.game, "item": item, "engagement": engagement, "note": str(args.get("note", ""))[:200]})
         return {"ok": True}
@@ -633,7 +641,10 @@ async def run_tool(state: GameState, name: str, args: dict, table_order: list[st
         state.alerts.append(reason[:200])
         if not state.caregiver_phone:
             return {"ok": True, "note": "Recorded for the nurse. No caregiver phone is set, so no text was sent."}
-        _bg(send_alert("help_requested", state.session_id, reason, to=state.caregiver_phone, patient=state.patient_name))
+        async def text() -> None:
+            if not await send_alert("help_requested", state.session_id, reason, to=state.caregiver_phone, patient=state.patient_name):
+                state.alerts.append("Text to caregiver failed (see backend log)")
+        _bg(text())
         return {"ok": True, "note": "A caregiver is being texted."}
 
     if name == "stop":
