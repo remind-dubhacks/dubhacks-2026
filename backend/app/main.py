@@ -31,6 +31,7 @@ from .models import (
     VerifyIn,
 )
 from .robot_client import RobotWorkerError
+from .vision import router as vision_router
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("remind")
@@ -70,6 +71,7 @@ async def seed(store: Store) -> None:
 
 app = FastAPI(title="ReMind API", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins, allow_methods=["*"], allow_headers=["*"])
+app.include_router(vision_router)
 
 
 def store(request: Request) -> Store:

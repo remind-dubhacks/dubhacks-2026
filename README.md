@@ -9,6 +9,9 @@ ReMind is an AI companion that doesn't just talk: it helps people living with de
 ## Docs
 - [Product & engineering spec](docs/SPEC.md)
 - [Perceptron Robotics API notes](docs/PERCEPTRON_API.md)
+- [Requirements and team roles](docs/REQUIREMENTS.md)
+- [Code ownership (who edits which folder)](docs/OWNERSHIP.md)
+- [Interface contracts](docs/CONTRACTS.md)
 
 ## Team
 - Maia Le ([@maiaPaperTowns](https://github.com/maiaPaperTowns))
