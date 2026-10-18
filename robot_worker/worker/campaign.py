@@ -41,6 +41,7 @@ class Config(BaseModel):
     autoUpload: bool = True
     autoTrain: bool = False  # Perceptron allows only 2 successful training jobs per team: train deliberately
     trainSteps: int = Field(1000, ge=100, le=10000)  # API max is 10,000
+    autoClearGripper: bool = True  # clear a follower-gripper-only overload between batches (in range, not hot)
     targets: list[Target]
 
 
@@ -76,6 +77,30 @@ def short_reason(text: str) -> str:
     if "missing motor" in t or "not respond" in t:
         return "A motor isn't answering. Check power, then resume."
     return "See the log, then resume."
+
+
+def gripper_only_fault() -> bool:
+    """True when the only unhealthy motor on either arm is the follower's gripper reporting an
+    overload (normal after squeezing an object)."""
+    try:
+        health = studio.health()
+    except HTTPException:
+        return False
+    bad = [(arm, m, h) for arm, ms in health.items() if "error" not in ms for m, h in ms.items() if not h["ok"]]
+    return len(bad) == 1 and bad[0][0] == "follower" and bad[0][1] == "gripper" and "Overload" in str(bad[0][2].get("problem"))
+
+
+def auto_clear_gripper() -> str | None:
+    """Clear a follower-gripper-only overload. studio.clear_fault refuses unless the gripper is in
+    its calibrated range and below 65 C (no motion either way). Returns None on success, else why."""
+    if not gripper_only_fault():
+        return "another motor needs attention"
+    try:
+        studio.clear_fault(studio.ClearIn(arm="follower", motor="gripper"))
+    except HTTPException as e:
+        return str(e.detail)
+    time.sleep(0.5)
+    return None if not gripper_only_fault() else "the gripper fault didn't clear"
 
 
 class Campaign:
@@ -243,7 +268,14 @@ class Campaign:
         try:
             studio.require_ports()
         except HTTPException as e:
-            return self.pause(f"Can't record. {short_reason(str(e.detail))}")
+            if self.config.autoClearGripper and "follower gripper" in str(e.detail) and auto_clear_gripper() is None:
+                self.history.append({"t": time.time(), "state": self.state, "message": "Gripper fault cleared automatically."})
+                try:
+                    studio.require_ports()
+                except HTTPException as e2:
+                    return self.pause(f"Can't record. {short_reason(str(e2.detail))}")
+            else:
+                return self.pause(f"Can't record. {short_reason(str(e.detail))}")
 
         # 3. Record
         before = studio.episode_count(self.config.repo)
@@ -263,8 +295,12 @@ class Campaign:
         if studio.proc.exit_code not in (0, None):
             reason = next((l for l in reversed([x for _, x in studio.proc.logs]) if "Error" in l or "error" in l), "see the log")
             if gained >= n:  # every episode saved; the error came while shutting the arm down
-                return self.pause(f"Batch saved, {self.progress[t.id]} of {t.target}. {short_reason(reason)}")
-            return self.pause(f"Recording failed. {gained} saved. {short_reason(reason)}")
+                if self.config.autoClearGripper and "id_=6" in reason and auto_clear_gripper() is None:
+                    self.history.append({"t": time.time(), "state": self.state, "message": "Gripper fault cleared automatically."})
+                else:
+                    return self.pause(f"Batch saved, {self.progress[t.id]} of {t.target}. {short_reason(reason)}")
+            else:
+                return self.pause(f"Recording failed. {gained} saved. {short_reason(reason)}")
 
         # 4. Break
         total = self.progress[t.id]
