@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { LiveVoice } from "@/lib/liveVoice";
 import { fetchTts, voiceReset, voiceStatus, voiceTurn, type ToolCall, type VoiceState } from "@/lib/voice";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -26,6 +27,10 @@ export default function Voice() {
   const [provider, setProvider] = useState("rules");
   const [tts, setTts] = useState(false); // ElevenLabs available
   const ttsRef = useRef(false);
+  const [liveOk, setLiveOk] = useState(false); // Gemini Live available on the backend
+  const [classic, setClassic] = useState(false); // user chose the older Chrome-speech + ElevenLabs mode
+  const liveRef = useRef<LiveVoice | null>(null);
+  const aiBuf = useRef("");
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const recRef = useRef<any>(null);
@@ -33,7 +38,7 @@ export default function Voice() {
   const speakingRef = useRef(false);
 
   useEffect(() => {
-    voiceStatus().then((st) => { setProvider(st.provider); setTts(st.tts); ttsRef.current = st.tts; });
+    voiceStatus().then((st) => { setLiveOk(st.live); setProvider(st.provider); setTts(st.tts); ttsRef.current = st.tts; });
   }, []);
   useEffect(() => {
     try { setLog(JSON.parse(localStorage.getItem(HISTORY_KEY) ?? "[]")); } catch { /* ignore */ }
@@ -76,6 +81,11 @@ export default function Voice() {
 
   const send = useCallback(async (text: string) => {
     if (!text.trim()) return;
+    if (liveRef.current) {
+      setLog((l) => [...l, { role: "you", text: text.trim(), at: Date.now() }]);
+      liveRef.current.sendText(text);
+      return;
+    }
     setHeard(""); setBusy(true); setErr(null);
     setLog((l) => [...l, { role: "you", text: text.trim(), at: Date.now() }]);
     try {
@@ -111,7 +121,37 @@ export default function Voice() {
     return () => { listeningRef.current = false; try { rec.stop(); } catch { /* */ } };
   }, [send, startRec]);
 
+  async function startLive() {
+    setErr(null);
+    const g = new LiveVoice({
+      onUser: (text, final) => {
+        setHeard(final ? "" : text);
+        if (final && text.trim()) setLog((l) => [...l, { role: "you", text: text.trim(), at: Date.now() }]);
+      },
+      onAiDelta: (t) => { aiBuf.current += t; setBusy(true); },
+      onAiDone: (t) => {
+        const text = (t || aiBuf.current).trim();
+        aiBuf.current = ""; setBusy(false);
+        if (text) setLog((l) => [...l, { role: "ai", text, at: Date.now() }]);
+      },
+      onTool: (call, st) => {
+        setCalls((c) => [call, ...c].slice(0, 8)); setState(st);
+        setLog((l) => [...l, { role: "ai", text: "", tools: [call.name], at: Date.now() }]);
+      },
+      onError: (m) => setErr(m),
+      onClose: () => { setStarted(false); setListening(false); setBusy(false); },
+    });
+    try {
+      await g.start();
+      liveRef.current = g;
+      setStarted(true); setListening(true);
+    } catch (e) {
+      setErr(`Could not start voice: ${e}`);
+    }
+  }
+
   function startConversation() {
+    if (liveOk && !classic) return void startLive();
     setStarted(true);
     listeningRef.current = true; setListening(true);
     setLog((l) => [...l, { role: "ai", text: GREETING, at: Date.now() }]);
@@ -119,6 +159,14 @@ export default function Voice() {
   }
 
   function endConversation() {
+    if (liveRef.current) {
+      liveRef.current.emergencyStop();
+      const g = liveRef.current;
+      liveRef.current = null;
+      setTimeout(() => g.stop(), 2500); // let the goodbye finish
+      setStarted(false); setListening(false);
+      return;
+    }
     listeningRef.current = false; setListening(false); setStarted(false);
     try { recRef.current?.stop(); } catch { /* */ }
     window.speechSynthesis?.cancel(); audioRef.current?.pause();
@@ -128,15 +176,18 @@ export default function Voice() {
   return (
     <main className="play voice">
       <h1>ReMind</h1>
-      <p className="small">{hasSR ? `Brain: ${provider === "gemini" ? "Gemini" : "keyword rules (set GEMINI_API_KEY)"} · Voice: ${tts ? "ElevenLabs" : "browser (set ELEVENLABS_API_KEY)"}` : "This browser has no speech recognition (use Chrome); typing works."}</p>
+      <p className="small">{liveOk && !classic ? "Live mode: Gemini Live, always listening, you can interrupt" : hasSR ? `Brain: ${provider === "gemini" ? "Gemini" : "keyword rules (set GEMINI_API_KEY)"} · Voice: ${tts ? "ElevenLabs" : "browser (set ELEVENLABS_API_KEY)"}` : "This browser has no speech recognition (use Chrome); typing works."}</p>
 
       {!started ? (
-        <button className="primary big start" onClick={startConversation} disabled={!hasSR}>🎙️ Start conversation</button>
+        <button className="primary big start" onClick={startConversation} disabled={!hasSR && !(liveOk && !classic)}>🎙️ Start conversation</button>
       ) : (
         <div className="row">
           <span className={`badge ${listening && !busy ? "on live-dot" : ""}`}>{busy ? "Thinking…" : "Listening…"}</span>
           <button className="stop" onClick={endConversation}>Stop</button>
         </div>
+      )}
+      {liveOk && !started && (
+        <p className="small"><label><input type="checkbox" checked={classic} onChange={(e) => setClassic(e.target.checked)} /> Classic mode (Chrome speech + ElevenLabs voice)</label></p>
       )}
       {heard && <p className="heard">“{heard}”</p>}
 
