@@ -313,8 +313,11 @@ export default function Studio() {
         <div className="row">
           <label className="small">Dataset ID <input value={datasetId} onChange={(e) => setDatasetId(e.target.value)} placeholder="from upload" /></label>
           <button disabled={!datasetId} onClick={() => run(async () => setRemote(await studio.remoteDataset(datasetId)))}>Check dataset</button>
-          <label className="small">Steps <input type="number" value={steps} onChange={(e) => setSteps(+e.target.value)} style={{ width: 100 }} /></label>
-          <button className="primary" disabled={!datasetId} onClick={() => run(async () => { await studio.train(datasetId, steps); setJobs(asList(await studio.jobs())); })}>Start training</button>
+          <label className="small">Steps <input type="number" min={1} max={10000} value={steps} onChange={(e) => setSteps(Math.min(10000, Math.max(1, +e.target.value)))} style={{ width: 100 }} /></label>
+          <button className="primary" disabled={!datasetId} onClick={() => run(async () => {
+            if (!confirm("Start a Perceptron training job?\n\nYour team only gets 2 successful training jobs in total. Make sure the dataset passed validation and has ~50+ good episodes per task.")) return;
+            await studio.train(datasetId, steps); setJobs(asList(await studio.jobs()));
+          })}>Start training</button>
           <button disabled={!status?.perceptron.configured} onClick={() => run(async () => { setJobs(asList(await studio.jobs())); setDeployments(asList(await studio.deployments())); })}>Refresh jobs & deployments</button>
         </div>
         {remote && <pre className="log" style={{ maxHeight: 200 }}>{JSON.stringify(remote, null, 2)}</pre>}

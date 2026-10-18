@@ -90,7 +90,7 @@ def test_failure_pauses_and_keeps_episodes(env):
     operator(c, time.time() + 10)
     c.start()
     assert wait_for(lambda: c.state == "paused")
-    assert "too old" in c.message
+    assert "camera lagged" in c.message
     assert sum(c.progress.values()) == 3  # 2 from batch 1 + 1 saved before the failure
     c.start()  # operator fixed it and resumes
     assert wait_for(lambda: c.state == "done")
@@ -104,3 +104,14 @@ def test_progress_survives_restart(env):
     assert wait_for(lambda: c.state == "done")
     again = cm.Campaign()
     assert again.progress == {"tea": 3, "coffee": 3}
+
+
+def test_stop_while_waiting_for_ready_never_records(env):
+    c, proc = make(env)
+    c.start()
+    assert wait_for(lambda: c.state in ("setup", "waiting_ready"))
+    c.stop()
+    assert wait_for(lambda: not (c.thread and c.thread.is_alive()))
+    time.sleep(0.2)
+    assert proc.batches == 0, "stop must not start a recording"
+    assert c.progress == {}

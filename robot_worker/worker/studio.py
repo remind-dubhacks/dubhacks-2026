@@ -15,12 +15,13 @@ import threading
 import time
 from collections import deque
 from pathlib import Path
+from typing import Literal
 
 import httpx
 from dotenv import set_key
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 ROOT = Path(__file__).resolve().parent.parent
 ENV_FILE = ROOT / ".env"
@@ -29,6 +30,8 @@ DATA_HOME = Path(os.getenv("HF_LEROBOT_HOME", Path.home() / ".cache/huggingface/
 PERCEPTRON = os.getenv("PERCEPTRON_BASE_URL", "https://robotics.perceptron.inc")
 
 router = APIRouter(prefix="/studio")
+
+from .liveview import LiveView, display_args  # noqa: E402
 
 
 # ---------------------------------------------------------------- process manager
@@ -125,6 +128,12 @@ class Proc:
 
 proc = Proc()
 
+# Always-live Rerun camera view; steps aside whenever LeRobot or a preview needs the cameras.
+live = LiveView(
+    busy=lambda: proc.running or _preview_clients > 0 or camera_lock.locked(),
+    cameras=lambda: {"side": int(os.getenv("SIDE_CAMERA_INDEX", "0")), "wrist": int(os.getenv("WRIST_CAMERA_INDEX", "1"))},
+)
+
 
 def env(name: str, default: str = "") -> str:
     return os.getenv(name, default)
@@ -171,6 +180,46 @@ def motor_health(port: str) -> dict:
     finally:
         ph.closePort()
     return out
+
+
+class ClearIn(BaseModel):
+    arm: Literal["follower", "leader"] = "follower"
+    motor: str = "gripper"
+
+
+@router.post("/clear-fault")
+def clear_fault(body: ClearIn) -> dict:
+    """Operator-requested recovery from a latched servo fault (same effect as a power cycle):
+    set the motor's target to where it already is (no motion), toggle torque so the status clears,
+    and leave that motor's torque off. Refused while LeRobot is using the arms."""
+    import scservo_sdk as scs
+
+    if proc.running:
+        raise HTTPException(409, "stop teleop/recording first")
+    if body.motor not in MOTORS:
+        raise HTTPException(422, "unknown motor")
+    port = env("SO101_PORT" if body.arm == "follower" else "LEADER_PORT")
+    mid = MOTORS.index(body.motor) + 1
+    ph, pk = scs.PortHandler(port), scs.PacketHandler(0)
+    if not ph.openPort():
+        raise HTTPException(500, "could not open the arm's port")
+    ph.setBaudRate(1_000_000)
+    try:
+        pos, comm, _ = pk.read2ByteTxRx(ph, mid, 56)
+        if comm != scs.COMM_SUCCESS:
+            raise HTTPException(500, "motor not answering; unplug that arm's DC power for 10 s")
+        temp, _, _ = pk.read1ByteTxRx(ph, mid, 63)
+        if temp >= 65:
+            raise HTTPException(409, f"{body.motor} is hot ({temp}°C); let it cool first")
+        pk.write2ByteTxRx(ph, mid, 42, pos)  # target = current position
+        pk.write1ByteTxRx(ph, mid, 40, 1)
+        time.sleep(0.4)
+        pk.write1ByteTxRx(ph, mid, 40, 0)
+        time.sleep(0.2)
+        _, _, err = pk.read2ByteTxRx(ph, mid, 42)
+    finally:
+        ph.closePort()
+    return {"arm": body.arm, "motor": body.motor, "cleared": not err, "tempC": temp}
 
 
 @router.get("/health")
@@ -220,8 +269,23 @@ def status() -> dict:
         },
         "cameras": {"side": int(env("SIDE_CAMERA_INDEX", "0")), "wrist": int(env("WRIST_CAMERA_INDEX", "1"))},
         "perceptron": {"configured": bool(env("PERCEPTRON_API_KEY"))},
+        "live": live.status(),
         "hfUser": env("HF_USER"),
     }
+
+
+class LiveIn(BaseModel):
+    on: bool
+
+
+@router.post("/live")
+def set_live(body: LiveIn) -> dict:
+    live.enabled = body.on
+    if body.on:
+        live.start()
+    else:
+        live.release(hold_off=0)
+    return live.status()
 
 
 @router.get("/logs")
@@ -252,8 +316,9 @@ _preview_gen = 0  # bumping this ends every open preview stream
 
 
 def release_cameras(timeout: float = 4.0) -> None:
-    """End preview streams so LeRobot can open the cameras."""
+    """End preview streams and the live view so LeRobot can open the cameras."""
     global _preview_gen
+    live.release(hold_off=8.0)
     _preview_gen += 1
     deadline = time.time() + timeout
     while (_preview_clients > 0 or camera_lock.locked()) and time.time() < deadline:
@@ -275,6 +340,7 @@ def list_cameras(max_index: int = 5) -> list[dict]:
     import cv2
 
     found = []
+    live.release()
     with camera_lock:
         for i in range(max_index):
             cap = cv2.VideoCapture(i)
@@ -291,6 +357,8 @@ def camera_stream(index: int):
     if proc.running:
         raise HTTPException(409, "cameras are in use by LeRobot; watch them in Rerun")
     import cv2
+
+    live.release()  # the live view steps aside while this preview runs
 
     def frames():
         global _preview_clients
@@ -328,7 +396,7 @@ def start_teleop(body: TeleopIn) -> dict:
     require_ports()
     cmd = ["lerobot-teleoperate", *robot_args(body.cameras), "--fps=30"]
     if body.rerun:
-        cmd.append("--display_data=true")
+        cmd += ["--display_data=true", *display_args()]
     proc.start("teleop", cmd)
     return proc.status()
 
@@ -357,7 +425,9 @@ def record_cmd(body: RecordIn) -> tuple[list[str], bool]:
         f"--dataset.reset_time_s={body.resetSeconds}",
         "--dataset.fps=30",
         "--dataset.push_to_hub=false",
+        "--dataset.no_stamp=true",  # LeRobot 0.6 otherwise makes a new timestamped folder per run, breaking resume
         f"--display_data={'true' if body.rerun else 'false'}",
+        *(display_args() if body.rerun else []),
         f"--play_sounds={'true' if body.sounds else 'false'}",
     ]
     if resume:
@@ -422,13 +492,29 @@ def pc() -> httpx.Client:
     key = env("PERCEPTRON_API_KEY")
     if not key:
         raise HTTPException(400, "set PERCEPTRON_API_KEY in robot_worker/.env")
-    return httpx.Client(base_url=PERCEPTRON, headers={"Authorization": f"Bearer {key}"}, timeout=60)
+    # Long-running operations may answer 303 with a same-origin polling URL; follow it.
+    return httpx.Client(base_url=PERCEPTRON, headers={"Authorization": f"Bearer {key}"}, timeout=60, follow_redirects=True)
 
 
 def pjson(r: httpx.Response):
     if r.status_code >= 400:
-        raise HTTPException(r.status_code, f"Perceptron: {r.text[:500]}")
-    return r.json()
+        try:  # API errors look like {"error": {"code", "message", "fields"}}
+            err = r.json()["error"]
+            detail = f"{err.get('code')}: {err.get('message') or ''} {err.get('fields') or ''}".strip()
+        except Exception:  # noqa: BLE001
+            detail = r.text[:500]
+        raise HTTPException(r.status_code, f"Perceptron {detail}")
+    return r.json() if r.content else {}
+
+
+def _grant_list(resp) -> list[dict]:
+    """The upload-URL response body isn't specified in the OpenAPI schema; accept likely shapes."""
+    if isinstance(resp, list):
+        return resp
+    for key in ("files", "uploads", "items", "data"):
+        if isinstance(resp.get(key), list):
+            return resp[key]
+    raise RuntimeError(f"unexpected upload response: {str(resp)[:200]}")
 
 
 uploads: dict[str, dict] = {}  # repo -> progress
@@ -438,23 +524,30 @@ def _upload(repo: str) -> None:
     state = uploads[repo]
     root = DATA_HOME / repo
     try:
-        files = sorted(f for f in root.rglob("*") if f.is_file() and not f.name.startswith("."))
+        # The API rejects zero-byte files (size_bytes >= 1).
+        files = sorted(f for f in root.rglob("*") if f.is_file() and not f.name.startswith(".") and f.stat().st_size > 0)
         state.update(total=len(files), done=0, phase="registering")
+        slug = repo.replace("/", "-")[:80]
         with pc() as c:
-            ds = pjson(c.post("/v1/datasets", headers={"Idempotency-Key": f"upload-{repo.replace('/', '-')}-{int(time.time())}"},
-                              json={"name": repo.replace("/", "-"), "source_kind": "upload"}))
-            state["datasetId"] = ds_id = ds["id"]
+            # Stable key per dataset snapshot: a retry reuses the registration instead of duplicating it.
+            key = f"upload-{slug}-{episode_count(repo)}ep"
+            ds = pjson(c.post("/v1/datasets", headers={"Idempotency-Key": key}, json={"name": slug, "source_kind": "upload"}))
+            state["datasetId"] = ds_id = ds.get("id") or ds.get("dataset_id")
+            if not ds_id:
+                raise RuntimeError(f"no dataset id in response: {str(ds)[:200]}")
             entries = []
             for f in files:
                 data = f.read_bytes()
-                entries.append({"path": str(f.relative_to(root)), "size_bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()})
+                entries.append({"path": f.relative_to(root).as_posix(), "size_bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()})
             state["phase"] = "uploading"
             for i in range(0, len(entries), 500):
                 batch = entries[i : i + 500]
                 grants = pjson(c.post(f"/v1/datasets/{ds_id}/uploads", json={"files": batch}))
-                for g in grants.get("files", grants if isinstance(grants, list) else []):
+                for g in _grant_list(grants):
                     path = root / g["path"]
-                    r = httpx.request(g.get("method", "PUT"), g["url"], headers=g.get("headers", {}), content=path.read_bytes(), timeout=300)
+                    url = g.get("url") or g.get("upload_url") or g.get("signed_url")
+                    # Signed URL + its exact headers only; never the team key.
+                    r = httpx.request(g.get("method", "PUT"), url, headers=g.get("headers", {}), content=path.read_bytes(), timeout=300)
                     if r.status_code >= 400:
                         raise RuntimeError(f"upload {g['path']} failed: {r.status_code} {r.text[:200]}")
                     state["done"] += 1
@@ -515,19 +608,19 @@ def capabilities():
         return pjson(c.get("/v1/capabilities"))
 
 
-class TrainIn(BaseModel):
-    datasetId: str
-    steps: int = 1000
-    backend: str = "standard"
-    mode: str = "expert_only"
-    actionHorizon: int = 30
+class TrainIn(BaseModel):  # limits from the participant OpenAPI JobRequest schema
+    datasetId: str = Field(pattern=r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,95}$")
+    steps: int = Field(1000, ge=1, le=10000)
+    backend: Literal["standard", "shared"] = "standard"
+    mode: Literal["expert_only", "backbone_lora", "full"] = "expert_only"
+    actionHorizon: Literal[20, 30] = 30
     rtc: bool = True
 
 
 @router.post("/perceptron/train")
 def train(body: TrainIn) -> dict:
     with pc() as c:
-        return pjson(c.post("/v1/jobs", headers={"Idempotency-Key": f"train-{body.datasetId}-{body.steps}-{int(time.time()) // 60}"},
+        return pjson(c.post("/v1/jobs", headers={"Idempotency-Key": f"train-{body.datasetId}-{body.mode}-{body.actionHorizon}-{body.steps}"},
                             json={"dataset_id": body.datasetId, "backend": body.backend, "mode": body.mode,
                                   "action_horizon": body.actionHorizon, "rtc_enabled": body.rtc, "steps": body.steps}))
 

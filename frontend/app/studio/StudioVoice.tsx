@@ -27,14 +27,44 @@ type Props = {
   rec: { repo: string; task: string; episodes: number; episodeSeconds: number; resetSeconds: number };
   campaign: CampaignStatus | null;
   actions: VoiceActions;
+  compact?: boolean; // Record page: just the mic, the speak toggle and the last line
 };
 
 type Msg = { who: "you" | "robot"; text: string };
 
 // ---------------------------------------------------------------- speech helpers
 
+// Only one browser tab speaks (several Studio tabs used to talk over each other).
+const TAB_ID = typeof window !== "undefined" ? Math.random().toString(36).slice(2) : "server";
+const OWNER_KEY = "remind-voice-owner";
+
+function readOwner(): { id: string; t: number } | null {
+  try {
+    return JSON.parse(localStorage.getItem(OWNER_KEY) || "null");
+  } catch {
+    return null;
+  }
+}
+
+export function claimVoice(force = false) {
+  try {
+    const o = readOwner();
+    if (force || !o || o.id === TAB_ID || Date.now() - o.t > 3000) localStorage.setItem(OWNER_KEY, JSON.stringify({ id: TAB_ID, t: Date.now() }));
+  } catch {}
+}
+
+function isVoiceOwner() {
+  const o = readOwner();
+  return !o || o.id === TAB_ID;
+}
+
+let lastSpoken = { text: "", t: 0 };
+
 function speak(text: string, opts: { interrupt?: boolean } = {}) {
   if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+  if (!isVoiceOwner()) return;
+  if (text === lastSpoken.text && Date.now() - lastSpoken.t < 10000) return; // no duplicate lines
+  lastSpoken = { text, t: Date.now() };
   if (opts.interrupt) window.speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text);
   u.rate = 1.0;
@@ -85,7 +115,7 @@ const GUIDE = {
 
 // ---------------------------------------------------------------- component
 
-export default function StudioVoice({ status, logs, datasets, uploads, rec, campaign, actions }: Props) {
+export default function StudioVoice({ status, logs, datasets, uploads, rec, campaign, actions, compact }: Props) {
   const [narrate, setNarrate] = useState(true);
   const [listening, setListening] = useState(false);
   const [typed, setTyped] = useState("");
@@ -94,6 +124,12 @@ export default function StudioVoice({ status, logs, datasets, uploads, rec, camp
   const recog = useRef<Recognition | null>(null);
   const narrateRef = useRef(narrate);
   narrateRef.current = narrate;
+
+  useEffect(() => {
+    claimVoice();
+    const t = setInterval(() => claimVoice(), 1000);
+    return () => clearInterval(t);
+  }, []);
 
   const say = useCallback((text: string, opts: { interrupt?: boolean; log?: boolean } = {}) => {
     if (opts.log !== false) setMsgs((m) => [...m.slice(-30), { who: "robot", text }]);
@@ -116,39 +152,43 @@ export default function StudioVoice({ status, logs, datasets, uploads, rec, camp
     prev.current = { kind: p.kind, running: p.running, episode: p.episode, phase: p.phase };
     if (!before) return; // don't narrate the state we found on page load
 
-    if (!before.running && p.running) {
-      say(p.kind === "teleop" ? "Teleop started. The follower will copy the leader. Keep hands clear." : "Recording is starting. Get the leader arm ready.");
+    const byCampaign = !!campaign?.running;
+    const total = byCampaign && campaign?.current ? campaign.current.episodes : rec.episodes;
+    const epSec = byCampaign && campaign ? campaign.config.episodeSeconds : rec.episodeSeconds;
+    const resetSec = byCampaign && campaign ? campaign.config.resetSeconds : rec.resetSeconds;
+    if (!before.running && p.running && !byCampaign) {
+      say(p.kind === "teleop" ? "Teleop on. Hands clear." : "Recording. Get ready.");
     }
     if (p.kind === "record" && p.running) {
-      const total = rec.episodes;
       if (p.phase === "recording" && (before.phase !== "recording" || before.episode !== p.episode)) {
         const n = (p.episode ?? 0) + 1;
         clearTimers();
-        say(`Recording episode ${n} of ${total}. Do the task now.`);
-        if (rec.episodeSeconds > 8) timers.current.push(setTimeout(() => say("Five seconds left.", { log: false }), (rec.episodeSeconds - 5) * 1000));
+        say(`Episode ${n} of ${total}. Go.`);
+        if (epSec > 8) timers.current.push(setTimeout(() => say("Five seconds.", { log: false }), (epSec - 5) * 1000));
       } else if (p.phase === "reset" && before.phase !== "reset") {
-        const done = (p.episode ?? 0) + 1;
-        const left = total - done;
+        const left = total - ((p.episode ?? 0) + 1);
         clearTimers();
-        say(left > 0 ? `Episode ${done} done. Reset the scene. ${left} to go.` : "Last episode done. Reset the scene.");
-        if (rec.resetSeconds > 5) timers.current.push(setTimeout(() => say("Get ready.", { log: false }), (rec.resetSeconds - 3) * 1000));
+        say(left > 0 ? `Reset. ${left} to go.` : "Reset. Last one done.");
+        if (resetSec > 5) timers.current.push(setTimeout(() => say("Get ready.", { log: false }), (resetSec - 3) * 1000));
       } else if (p.phase === "re-record" && before.phase !== "re-record") {
-        say("Re-recording that episode.");
+        say("Redo that one.");
       } else if (p.phase === "finishing" && before.phase !== "finishing") {
         clearTimers();
-        say("Saving the dataset. Please wait.");
+        say("Saving.");
       }
     }
     if (before.running && !p.running) {
       clearTimers();
-      if (p.stoppedByUser || p.exitCode === 0 || p.exitCode === null) {
-        say(p.kind === "record" ? "Recording finished and saved." : "Teleop stopped.");
+      if (byCampaign) {
+        // the campaign announces what happens next
+      } else if (p.stoppedByUser || p.exitCode === 0 || p.exitCode === null) {
+        say(p.kind === "record" ? "Saved." : "Teleop off.");
       } else {
         const reason = [...logs].reverse().find((l) => /Error|error:|Timeout|Missing motor/.test(l));
         say(`${p.kind === "record" ? "Recording" : "Teleop"} stopped with an error. ${explain(reason)}`, { interrupt: true });
       }
     }
-  }, [status, rec.episodes, rec.episodeSeconds, rec.resetSeconds, logs, say]);
+  }, [status, rec.episodes, rec.episodeSeconds, rec.resetSeconds, logs, say, campaign]);
 
   useEffect(() => () => clearTimers(), []);
 
@@ -221,6 +261,7 @@ export default function StudioVoice({ status, logs, datasets, uploads, rec, camp
     async (raw: string) => {
       const t = raw.toLowerCase().trim();
       if (!t) return;
+      claimVoice(true); // the tab you're using becomes the one that speaks
       setMsgs((m) => [...m.slice(-30), { who: "you", text: raw }]);
 
       // Stop always wins and never needs confirmation.
@@ -361,6 +402,19 @@ export default function StudioVoice({ status, logs, datasets, uploads, rec, camp
     setListening(true);
     r.start();
   };
+
+  if (compact) {
+    const last = [...msgs].reverse().find((m) => m.who === "robot");
+    return (
+      <div className="row voice-compact">
+        <button className={listening ? "stop" : ""} onClick={listen} aria-pressed={listening}>{listening ? "Listening…" : "🎙 Talk"}</button>
+        <label className="small" style={{ flexDirection: "row", alignItems: "center" }}>
+          <input type="checkbox" checked={narrate} onChange={(e) => { setNarrate(e.target.checked); if (e.target.checked) claimVoice(true); else window.speechSynthesis?.cancel(); }} /> Voice
+        </label>
+        {last && <span className="small">“{last.text}”</span>}
+      </div>
+    );
+  }
 
   return (
     <div className="card voice">
