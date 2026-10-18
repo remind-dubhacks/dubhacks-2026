@@ -224,6 +224,9 @@ class Campaign:
         while not self.ready.wait(0.3):
             if self.stop_flag:
                 return
+        # stop() also sets `ready` to wake this wait; it must never be taken as a go-ahead.
+        if self.stop_flag:
+            return
         if self.paused and not self._wait_unpaused():
             return
 
