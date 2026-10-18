@@ -163,7 +163,7 @@ def motor_health(port: str) -> dict:
                 continue
             temp, _, _ = pk.read1ByteTxRx(ph, i, 63)
             problem = pk.getRxPacketError(err).replace("[RxPacketError] ", "") if err else None
-            out[name] = {"ok": not problem and temp < 60, "tempC": temp, "problem": problem or ("hot" if temp >= 65 else None)}
+            out[name] = {"ok": not problem and temp < 65, "tempC": temp, "problem": problem or ("hot" if temp >= 65 else None)}
     finally:
         ph.closePort()
     return out
