@@ -382,10 +382,14 @@ class ScriptedExecutor:
                     move(poses["home"])
                     raise RobotError("grasp_missed", f"could not pick the {obj} from slot {a}")
             move(above)
+            # Travel high: a straight joint-space move between two low "above" poses dips toward the
+            # table mid-way and knocked keyrings over in the first arm tests.
+            move(poses["home"])
             move(poses[f"above_s{b}"])
             move(poses[f"down_s{b}"])
             grip(GRIP_OPEN, 0.3)
             move(poses[f"above_s{b}"])
+            move(poses["home"])
             row[b - 1], row[a - 1] = obj, None
         move(poses["home"])
 
