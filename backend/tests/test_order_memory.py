@@ -45,9 +45,10 @@ def test_partial_order_praises_what_is_right_then_offers_a_choice():
     wrong = [o[0], o[2], o[1]]  # first spot right, last two swapped
     s = om.check("done", observed=wrong)
     assert f"The {om.short(o[0])} is in just the right spot" in s.say and len(s.options) == 2
-    assert o[1] in s.options
-    s2 = om.check("done", observed=wrong)
-    assert "Let's put them back together" in s2.say and om.current == om.original and om.log[-1].help == 2
+    assert o[1] in s.options and "in the middle" in s.say
+    s2 = om.check(f"the {o[1]}")  # answers the choice correctly; the last spot follows
+    assert f"Yes, the {o[1]} goes in the middle" in s2.say and f"And the {o[2]} goes on the right" in s2.say
+    assert om.current == om.original and om.log[-1].help == 1
 
 
 def test_without_camera_it_asks_for_words_before_helping():

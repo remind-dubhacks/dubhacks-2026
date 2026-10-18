@@ -34,8 +34,9 @@ Code: [`backend/app/games/order_memory.py`](../backend/app/games/order_memory.py
 | 2. Say back | "Can you say them back to me?" Whatever they say: "Lovely" or "Let's say it once more together…" | Practice without judgment (errorless) |
 | 3. Shuffle | "Hands resting on your lap, please, while they get mixed up." | Safety; the robot or a caregiver moves them |
 | 4. Restore | "Can you put them back the way they were, from left to right?" | Recall plus a hands-on action |
-| 4a. Partly right | "The keycap is in just the right spot. Let's look at the middle together. Was it the lipstick, or the keychain?" | Praise what is right, then a two-way choice |
-| 4b. Still unsure | "Let's put them back together: the lipstick, the keycap and the keychain. There they are, just like before." | Every round ends restored |
+| 4a. Partly right | "The keycap is in just the right spot. Let's think about what goes in the middle. Was it the lipstick, or the keychain?" | Praise what's right, then guide **one spot at a time** with a two-way choice |
+| 4b. Answers the choice | "Yes, the lipstick goes in the middle. And the keychain goes on the right. Now they're just like before." | Success confirmed; the last spot follows automatically |
+| 4c. Unsure or picks the other one | "It's the lipstick in the middle. Let's put it there. Next, what goes on the right?…" | Show, don't judge, then carry on; every round ends restored |
 | 5. Memory (optional) | "Who did you like to get ready with before going out? You can skip this one." | Reminiscence |
 | 6. Spaced recall | "In our very first row, which one was on the left?" | Spaced retrieval |
 
@@ -46,6 +47,12 @@ Code: [`backend/app/games/order_memory.py`](../backend/app/games/order_memory.py
 - With 3 objects, every one of the 5 mixes can occur: 3 easier swaps where one object stays put, and 2 harder ones where all three move.
 - The same mix never comes twice in a row.
 - After a round that needed help, the next mix is always an easier swap.
+
+**Tested exhaustively** (`backend/tests/test_order_memory_exhaustive.py`): every starting order × every shuffle (36 rows) × every way of putting things back. That covers each arrangement the camera could read, each order spoken aloud, "done" with no camera, "I don't know", a camera reading that misses an object, and saying the row back exactly, jumbled or not at all. Every guided question is also answered right, with the other object, and with "not sure". That's over 1,000 complete sessions, each checked for:
+- the listed robot moves really produce the mixed row,
+- each question names its spot and offers the right object plus one not yet placed,
+- the round ends restored, with the help level recorded correctly,
+- no judging words, and no mention of an object that isn't on the table.
 
 **Difficulty:** it starts with 2 objects, moves to 3 after a row restored without help, and returns to 2 after a row that needed full help.
 

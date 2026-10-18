@@ -24,7 +24,7 @@ import random
 import re
 from dataclasses import dataclass, field
 
-from .find_remember import OBJECTS, SPACED_INTERVALS, Step, at, is_unsure, spoken_join
+from .find_remember import OBJECTS, SPACED_INTERVALS, Step, at, is_unsure, spoken_join  # noqa: F401
 
 LEVELS = {1: 2, 2: 3}  # objects per row
 
@@ -66,7 +66,11 @@ class OrderMemory:
         self.recall_step = 0
         self.memory_prompts_used: set[str] = set()
         self.last_pattern: tuple[int, ...] | None = None
-        self.asked_words = False  # avoid repeating the same shuffle twice in a row
+        self.asked_words = False
+        self.guide: int | None = None  # spot we're currently guiding the person to fill
+        self.placed: list[int] = []  # spots already right this round
+        self.used_choice = False
+        self.revealed = False  # avoid repeating the same shuffle twice in a row
 
     def short(self, o: str) -> str:
         return OBJECTS[o]["short"]
@@ -118,65 +122,99 @@ class OrderMemory:
         fresh = [p for p in perms if p != self.last_pattern]
         return fresh or perms
 
-    def shuffle(self, lead: str = "") -> Step:
-        pattern = self.rng.choice(self.shuffle_patterns())
-        self.last_pattern = pattern
-        new = [self.original[i] for i in pattern]  # always actually mixed up
+    def shuffle(self, lead: str = "", pattern: tuple[int, ...] | None = None) -> Step:
+        """Mix the row. `pattern[i]` is the original position of the object that ends up in spot i;
+        tests pass it to enumerate every case, play picks one at random."""
+        if pattern is None:
+            pattern = self.rng.choice(self.shuffle_patterns())
+        if sorted(pattern) != list(range(len(self.original))) or list(pattern) == list(range(len(self.original))):
+            raise ValueError("pattern must be a real mix of the row")
+        self.last_pattern = tuple(pattern)
+        new = [self.original[i] for i in pattern]
         moves = [{"object": o, "from": self.spots[self.original.index(o)], "to": self.spots[i]} for i, o in enumerate(new) if new[i] != self.original[i]]
         self.current, self.phase = new, "shuffle"
         return Step(say=f"{lead} Now, hands resting on your lap, please, while they get mixed up.".strip(), expect="moved", phase="shuffle", moves=moves)
 
     def after_shuffle(self) -> Step:
-        self.phase, self.help, self.asked_words = "restore", 0, False
+        self.phase, self.asked_words = "restore", False
+        self.guide, self.placed, self.used_choice, self.revealed = None, [], False, False
         return Step(
             say="All mixed up! Can you put them back the way they were, from left to right? Take your time, and tell me when you're done.",
             expect="done",
             phase="restore",
         )
 
-    # ------------------------------------------------------------ 4-5. restore (errorless)
+    # ------------------------------------------------------------ 4-5. restore (errorless, one spot at a time)
 
     def check(self, text: str, observed: list[str] | None = None) -> Step:
-        """`observed`: left-to-right order from the camera or caregiver. Without it, a named order
-        in the person's words is used; with neither, we restore it together (never a guess)."""
+        """`observed`: left-to-right order from the camera or caregiver. Without it, an order the
+        person says in words is used; with neither we ask once, then guide (never a guess)."""
         if observed is not None and sorted(observed) != sorted(self.original):
-            observed = None  # the camera missed something: treat as "couldn't see", never as an answer
+            observed = None  # the camera missed something: "couldn't see", never an answer
+        if observed == self.original:
+            return self._restored("That's exactly how they were. What a good memory!" if self.guide is None and not self.placed else "There they are, just like before. Well done!")
+        if self.guide is not None:
+            return self._guided_answer(text, observed)
+
         if observed is None:
             named = order_from_text(text, self.original)
             observed = named if len(named) == len(self.original) else None
-        if observed is None and self.help == 0 and not self.asked_words and not is_unsure(text):
+            if observed == self.original:
+                return self._restored("That's exactly how they were. What a good memory!")
+        if observed is None and not self.asked_words and not is_unsure(text):
             self.asked_words = True
             return Step(say="I can't see the table from here. Could you tell me the order, from left to right?", expect="done", phase="restore")
+
         if observed is not None:
             self.current = list(observed)
-        if self.current == self.original and observed is not None:
-            return self._restored("That's exactly how they were. What a good memory!")
-
-        self.help += 1
-        if self.help == 1 and not is_unsure(text) and observed is not None:
             right = [o for i, o in enumerate(self.original) if self.current[i] == o]
-            first_off = next(i for i, o in enumerate(self.original) if self.current[i] != o)
-            want = self.original[first_off]
-            other = self.rng.choice([o for o in self.original if o != want])
-            pair = sorted([want, other], key=lambda _: self.rng.random())
-            praise = f"The {self.short(right[0])} is in just the right spot. " if right else "Good effort. "
-            return Step(
-                say=f"{praise}Let's look at the {self.spots[first_off]} together. Was it the {pair[0]}, or the {pair[1]}?",
-                expect="done",
-                phase="restore",
-                options=pair,
-            )
-        if self.help == 1:
-            first = self.original[0]
-            other = self.rng.choice(self.original[1:])
-            pair = sorted([first, other], key=lambda _: self.rng.random())
-            return Step(say=f"That's okay. Let's start on the left. Was it the {pair[0]}, or the {pair[1]}?", expect="done", phase="restore", options=pair)
-        # Show the whole order and put it back together: every round ends restored.
-        self.current = list(self.original)
-        return self._restored(f"Let's put them back together: {self.names(self.original)}. There they are, just like before.", help_used=True)
+            self.placed = [i for i, o in enumerate(self.original) if self.current[i] == o]
+            lead = (f"The {self.short(right[0])} is in just the right spot." if len(right) == 1 else "Good effort.")
+        else:
+            self.placed = []
+            lead = "That's okay."
+        return self._ask_next(lead)
 
-    def _restored(self, praise: str, help_used: bool = False) -> Step:
-        self.log.append(OrderRound(list(self.original), help=2 if help_used else min(self.help, 1)))
+    def _remaining(self) -> list[int]:
+        return [i for i in range(len(self.original)) if i not in self.placed]
+
+    def _ask_next(self, lead: str) -> Step:
+        left = self._remaining()
+        if len(left) <= 1:
+            return self._finish_guided(lead)
+        i = left[0]
+        self.guide = i
+        want = self.original[i]
+        other = self.rng.choice([self.original[j] for j in left if j != i])
+        pair = sorted([want, other], key=lambda _: self.rng.random())
+        ask = "Next, what goes" if self.used_choice else "Let's think about what goes"
+        self.used_choice = True
+        return Step(say=f"{lead} {ask} {at(self.spots[i])}. Was it the {pair[0]}, or the {pair[1]}?", expect="done", phase="restore", options=pair)
+
+    def _guided_answer(self, text: str, observed: list[str] | None) -> Step:
+        i, want = self.guide, self.original[self.guide]
+        named = order_from_text(text, self.original)
+        ok = (observed is not None and observed[i] == want) or (observed is None and named[:1] == [want] and not is_unsure(text))
+        if ok:
+            lead = f"Yes, the {want} goes {at(self.spots[i])}."
+        else:
+            lead = f"It's the {want} {at(self.spots[i])}. Let's put it there."
+            self.revealed = True
+        self.placed.append(i)
+        self.guide = None
+        return self._ask_next(lead)
+
+    def _finish_guided(self, lead: str) -> Step:
+        for j in self._remaining():  # the last spot is decided by the others
+            lead += f" And the {self.original[j]} goes {at(self.spots[j])}."
+            self.placed.append(j)
+        return self._restored(f"{lead} Now they're just like before.")
+
+    def _restored(self, praise: str) -> Step:
+        help_level = 2 if getattr(self, "revealed", False) else 1 if getattr(self, "used_choice", False) else 0
+        self.current = list(self.original)
+        self.guide = None
+        self.log.append(OrderRound(list(self.original), help=help_level))
         return self.reminisce(praise)
 
     # ------------------------------------------------------------ 6. memory (optional)
