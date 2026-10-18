@@ -1,5 +1,5 @@
-/* Nurse dashboard (Nurse Dashboard mockup): Calm's stone faceplate, recessed wells and raised keys, with a rose
-   urgent panel. Scoped under .nurse so the caregiver styles in globals.css don't leak in. */
+/* Nurse dashboard (Nurse Dashboard mockup): flat Calm panels in a stone palette, with the same raised, tactile
+   keys as the patient setup faceplate, on flat trays, and a rose urgent panel. Scoped under .nurse so the caregiver styles in globals.css don't leak in. */
 
 .nurse {
   --ink: #1e2b26;
@@ -7,17 +7,19 @@
   --ink-label: #2f3833;
   --ground: linear-gradient(180deg, rgb(214, 232, 240) 0%, rgb(230, 239, 216) 100%);
   --font: "Atkinson Hyperlegible Next", system-ui, sans-serif;
-  --face: linear-gradient(180deg, #f1f3ee 0%, #e0e4db 100%);
-  --well: linear-gradient(180deg, #c6cbc1 0%, #f5f7f2 100%);
+  --face: #f3f5f0;
+  --well: #e6e9e3;
   --field-well: linear-gradient(180deg, #cdd2c8 0%, #f5f7f2 100%);
   --field: #f8f9f5;
   --key-on: linear-gradient(180deg, #5a9a76 0%, #3d7457 100%);
   --key-off: linear-gradient(180deg, #d9dcd6 0%, #b9beb6 100%);
+  --key-face: linear-gradient(180deg, #f8f9f5 0%, #e6e9e2 100%);
   --primary: linear-gradient(180deg, #4c8a68 0%, #2f6248 100%);
   --red: #d9503a;
-  --red-key: linear-gradient(180deg, #c9533d 0%, #a63a27 100%);
+  --red-key: linear-gradient(180deg, #cf5a44 0%, #a63a28 100%);
+  /* Light keys and coloured keys, as .key and .key[aria-pressed] on the patient faceplate. */
   --raised: inset 0 1px 0 rgba(255, 255, 255, 0.8), inset 0 -2px 0 rgba(0, 0, 0, 0.1), 0 2px 3px rgba(30, 43, 38, 0.3);
-  --pressed: inset 0 2px 5px rgba(0, 0, 0, 0.25);
+  --raised-on: inset 0 1px 0 rgba(255, 255, 255, 0.3), inset 0 -3px 0 rgba(0, 0, 0, 0.15), 0 2px 4px rgba(30, 43, 38, 0.3);
 
   min-height: 100dvh;
   box-sizing: border-box;
@@ -40,7 +42,7 @@
 .nurse .dot { width: 14px; height: 14px; flex-shrink: 0; border: none; border-radius: 50%; background: var(--red); box-shadow: 0 0 0 3px rgba(217, 80, 58, 0.15); }
 
 .nurse-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 0 8px; }
-.nurse-head h1 { font-size: 32px; font-weight: 600; letter-spacing: -0.01em; text-shadow: 0 1px 0 rgba(255, 255, 255, 0.8); }
+.nurse-head h1 { font-size: 32px; font-weight: 600; letter-spacing: -0.01em; }
 .nurse-head-end { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
 .nurse-head span { font-size: 22px; color: var(--ink-muted); }
 .nurse .nurse-patient-link {
@@ -67,18 +69,19 @@
   transition: transform 80ms, box-shadow 80ms;
 }
 .nurse .key { padding: 14px 26px; border-radius: 16px; font-weight: 600; font-size: 20px; box-shadow: var(--raised); }
-.nurse .key:active:not(:disabled) { transform: translateY(2px); box-shadow: var(--pressed); }
+.nurse .key:active:not(:disabled) { transform: translateY(1px); }
 .nurse .key:disabled { opacity: 0.45; cursor: not-allowed; }
-.nurse .key-red { background: var(--red-key); color: #fff; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 2px 0 #7e2a1c, 0 6px 14px rgba(166, 58, 39, 0.3); }
-.nurse .key-grey { background: var(--key-off); color: var(--ink-label); }
-.nurse .key-pine { background: var(--primary); color: #fff; text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.25); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), inset 0 -3px 0 rgba(0, 0, 0, 0.18), 0 3px 6px rgba(30, 43, 38, 0.35); }
+.nurse .key-red { background: var(--red-key); color: #fff; text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.25); box-shadow: var(--raised-on); }
+.nurse .key-grey { background: var(--key-off); color: var(--ink-label); text-shadow: 0 1px 0 rgba(255, 255, 255, 0.6); }
+.nurse .key-pine { background: var(--primary); color: #fff; text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.25); box-shadow: var(--raised-on); }
 
 /* Urgent */
 .urgent {
   padding: 8px;
   border-radius: 32px;
   background: linear-gradient(180deg, #ebcac1 0%, #f6e7e2 100%);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 2px 6px rgba(166, 58, 39, 0.1);
+  border: 1px solid rgba(30, 43, 38, 0.06);
+  box-shadow: 0 1px 3px rgba(30, 43, 38, 0.08);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -91,19 +94,21 @@
   gap: 18px;
   padding: 18px 20px 18px 28px;
   border-radius: 24px;
-  background: linear-gradient(180deg, #fff 0%, #f5f6f3 100%);
-  box-shadow: inset 0 1px 0 #fff, 0 2px 4px rgba(30, 43, 38, 0.06);
+  background: #fff;
+  border: 1px solid rgba(30, 43, 38, 0.06);
+  box-shadow: 0 1px 3px rgba(30, 43, 38, 0.08);
 }
 .urgent-text { flex: 1; min-width: 0; }
 .urgent-title { font-size: 25px; font-weight: 600; }
 .urgent-detail { font-size: 20px; color: var(--ink-muted); }
 
 /* Resident carousel */
-.strip { display: flex; gap: 8px; padding: 8px; border-radius: 32px; background: var(--well); box-shadow: inset 0 2px 4px rgba(30, 43, 38, 0.12); }
+.strip { display: flex; gap: 8px; padding: 8px; border-radius: 32px; background: var(--well); }
 .strip-track { flex: 1; display: flex; gap: 8px; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; padding: 2px 0 8px; margin-bottom: -6px; }
 .strip-track::-webkit-scrollbar { display: none; }
 .strip-none { align-self: center; padding: 0 16px; color: var(--ink-muted); }
-.nurse .strip-arrow { flex: 0 0 76px; display: grid; place-items: center; padding: 0; border-radius: 22px; background: var(--key-off); }
+.nurse .strip-arrow { flex: 0 0 76px; display: grid; place-items: center; padding: 0; border-radius: 22px; background: var(--key-off); box-shadow: var(--raised); }
+.nurse .strip-arrow:active, .nurse .resident:active, .nurse .tab:active, .nurse .chip:active { transform: translateY(1px); }
 .strip-arrow svg { width: 30px; height: 30px; fill: none; stroke: var(--ink); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
 .nurse .resident {
   position: relative;
@@ -116,13 +121,14 @@
   gap: 2px;
   padding: 26px 26px;
   border-radius: 22px;
-  background: var(--face);
+  background: var(--key-face);
+  box-shadow: var(--raised);
   text-align: left;
 }
 .nurse .resident .dot { position: absolute; top: 16px; right: 18px; }
 .resident-name { font-size: 25px; font-weight: 600; }
 .resident-room { font-size: 20px; font-weight: 400; color: var(--ink-muted); }
-.nurse .resident.on { background: var(--key-on); color: #fff; box-shadow: var(--pressed); transform: translateY(2px); }
+.nurse .resident.on { background: var(--key-on); color: #fff; box-shadow: var(--raised-on); }
 .nurse .resident.on .resident-room { color: rgba(255, 255, 255, 0.85); }
 
 /* Detail panel */
@@ -131,7 +137,8 @@
   padding: 36px 40px;
   border-radius: 36px;
   background: var(--face);
-  box-shadow: inset 0 1px 0 #fff, inset 0 -2px 0 rgba(30, 43, 38, 0.06), 0 2px 4px rgba(30, 43, 38, 0.06), 0 8px 20px rgba(30, 43, 38, 0.06);
+  border: 1px solid rgba(30, 43, 38, 0.06);
+  box-shadow: 0 1px 3px rgba(30, 43, 38, 0.08);
   display: flex;
   flex-direction: column;
   scroll-margin-top: 16px;
@@ -142,21 +149,33 @@
 .detail-head h2 { font-size: 30px; font-weight: 600; }
 .consent { display: flex; flex-direction: column; align-items: center; gap: 6px; }
 .nurse .toggle { display: flex; align-items: center; gap: 12px; min-width: 230px; justify-content: center; background: var(--key-off); }
-.nurse .toggle.on { background: var(--key-on); color: #fff; box-shadow: var(--pressed); }
+.nurse .toggle.on { background: var(--key-on); color: #fff; box-shadow: var(--raised-on); }
 .toggle-led { width: 12px; height: 12px; border-radius: 50%; background: #7a817c; box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.4); }
-.toggle.on .toggle-led { background: #6ee7a0; box-shadow: 0 0 10px rgba(110, 231, 160, 0.9); }
+.toggle.on .toggle-led { background: #6ee7a0; box-shadow: 0 0 6px rgba(110, 231, 160, 0.8); }
 
 .tabs, .segmented { display: flex; gap: 6px; padding: 6px; border-radius: 22px; background: var(--well); align-self: flex-start; flex-wrap: wrap; }
-.nurse .tab { padding: 12px 26px; border-radius: 16px; background: var(--key-off); color: var(--ink-label); font-size: 19px; }
-.nurse .tab.on { background: var(--key-on); color: #fff; box-shadow: var(--pressed); }
+.nurse .tab { padding: 12px 26px; border-radius: 16px; background: var(--key-off); color: var(--ink-label); font-size: 19px; box-shadow: var(--raised); }
+.nurse .tab.on { background: var(--key-on); color: #fff; box-shadow: var(--raised-on); }
 
-/* Lists */
+/* Lists. .nurse .item outranks the caregiver .item in globals.css (centred, thick border, min-width). */
 .list { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 10px; }
-.item { padding: 18px 22px; border-radius: 20px; background: #f8f9f5; box-shadow: inset 0 1px 0 #fff, 0 1px 2px rgba(30, 43, 38, 0.08); display: flex; flex-direction: column; gap: 4px; }
+.nurse .item {
+  padding: 18px 22px;
+  min-width: 0;
+  border: 1px solid rgba(30, 43, 38, 0.08);
+  border-radius: 20px;
+  background: #f8f9f5;
+  box-shadow: 0 1px 2px rgba(30, 43, 38, 0.10);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  text-align: left;
+}
 .item-title { font-size: 21px; font-weight: 600; }
 .item-alert { display: flex; align-items: center; gap: 10px; color: #8f2f1f; }
 .obs { padding-left: 22px; color: var(--ink-muted); }
-.fact { flex-direction: row; align-items: center; gap: 16px; }
+.nurse .fact { flex-direction: row; align-items: center; gap: 16px; }
 .fact .item-title { font-weight: 400; }
 .grow { flex: 1; min-width: 0; }
 .actions { display: flex; gap: 8px; flex-shrink: 0; }
@@ -171,8 +190,8 @@
 .add { display: flex; gap: 12px; align-items: stretch; }
 .add .field-well { flex: 1; }
 .filters { display: flex; gap: 8px; flex-wrap: wrap; }
-.nurse .chip { padding: 8px 16px; border-radius: 999px; background: #e6e9e2; font-size: 17px; }
-.nurse .chip.on { background: #2f6248; color: #fff; }
+.nurse .chip { padding: 8px 16px; border-radius: 999px; background: var(--key-off); color: var(--ink-label); font-size: 17px; box-shadow: var(--raised); }
+.nurse .chip.on { background: var(--key-on); color: #fff; box-shadow: var(--raised-on); }
 .forget { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding-top: 12px; border-top: 1px solid rgba(30, 43, 38, 0.1); }
 
 /* Fields */
@@ -181,10 +200,10 @@
   width: 100%;
   min-height: 52px;
   padding: 12px 16px;
-  border: none;
+  border: 1px solid rgba(30, 43, 38, 0.12);
   border-radius: 14px;
   background: var(--field);
-  box-shadow: inset 0 2px 5px rgba(30, 43, 38, 0.22);
+  box-shadow: inset 0 1px 2px rgba(30, 43, 38, 0.12);
   font: inherit;
   font-size: 20px;
   color: var(--ink);
@@ -214,5 +233,5 @@
   .nurse .strip-arrow { display: none; }
   .nurse .resident { flex-basis: 70%; min-width: 0; }
   .nurse-panel { padding: 22px 18px; border-radius: 28px; }
-  .fact, .add { flex-direction: column; align-items: stretch; }
+  .nurse .fact, .add { flex-direction: column; align-items: stretch; }
 }

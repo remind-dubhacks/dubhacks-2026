@@ -191,7 +191,7 @@ export function SetupCard({ live, connecting, error, onStart, onEnd, onHide }: P
           </div>
           {phone.trim() && (
             <span className="field-note">
-              <button type="button" onClick={testText} disabled={testing}>{testing ? "Sending…" : "Send test text"}</button>
+              <button type="button" className="test-text" onClick={testText} disabled={testing}>{testing ? "Sending…" : "Send test text"}</button>
               {testMsg && <> <span className={testMsg.ok ? "" : "error"}>{testMsg.text}</span></>}
             </span>
           )}
