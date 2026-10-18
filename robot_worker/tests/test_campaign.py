@@ -90,7 +90,7 @@ def test_failure_pauses_and_keeps_episodes(env):
     operator(c, time.time() + 10)
     c.start()
     assert wait_for(lambda: c.state == "paused")
-    assert "too old" in c.message
+    assert "camera lagged" in c.message
     assert sum(c.progress.values()) == 3  # 2 from batch 1 + 1 saved before the failure
     c.start()  # operator fixed it and resumes
     assert wait_for(lambda: c.state == "done")
@@ -104,3 +104,49 @@ def test_progress_survives_restart(env):
     assert wait_for(lambda: c.state == "done")
     again = cm.Campaign()
     assert again.progress == {"tea": 3, "coffee": 3}
+
+
+def test_stop_while_waiting_for_ready_never_records(env):
+    c, proc = make(env)
+    c.start()
+    assert wait_for(lambda: c.state in ("setup", "waiting_ready"))
+    c.stop()
+    assert wait_for(lambda: not (c.thread and c.thread.is_alive()))
+    time.sleep(0.2)
+    assert proc.batches == 0, "stop must not start a recording"
+    assert c.progress == {}
+
+
+def test_gripper_fault_after_full_batch_is_cleared_and_recording_continues(env, monkeypatch):
+    c, proc = make(env)
+    real_start = proc.start
+
+    def start_with_gripper_fault(kind, cmd):
+        real_start(kind, cmd)
+        proc.exit_code = 1  # all episodes saved, then the shutdown hit the gripper overload
+        proc.logs = [(1, "RuntimeError: Failed to write 'Torque_Enable' on id_=6 with '0' after 6 tries. [RxPacketError] Overload error!")]
+
+    proc.start = start_with_gripper_fault
+    cleared = []
+    monkeypatch.setattr(cm, "auto_clear_gripper", lambda: cleared.append(1))  # returns None = success
+    operator(c, time.time() + 10)
+    c.start()
+    assert wait_for(lambda: c.state == "done")
+    assert c.progress == {"tea": 3, "coffee": 3} and len(cleared) == 4
+
+
+def test_other_motor_fault_still_pauses(env, monkeypatch):
+    c, proc = make(env)
+    real_start = proc.start
+
+    def start_with_elbow_fault(kind, cmd):
+        real_start(kind, cmd)
+        proc.exit_code = 1
+        proc.logs = [(1, "RuntimeError: Failed to write 'Torque_Enable' on id_=3 with '0'. [RxPacketError] Overload error!")]
+
+    proc.start = start_with_elbow_fault
+    monkeypatch.setattr(cm, "auto_clear_gripper", lambda: "another motor needs attention")
+    operator(c, time.time() + 10)
+    c.start()
+    assert wait_for(lambda: c.state == "paused")
+    assert "Batch saved" in c.message

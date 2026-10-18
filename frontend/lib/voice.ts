@@ -29,11 +29,11 @@ export async function voiceTurn(sessionId: string, text: string, tableOrder: str
 export const voiceReset = (sessionId: string) =>
   fetch(`${API}/api/voice/reset`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId }) });
 
-export async function voiceStatus(): Promise<{ provider: "gemini" | "rules"; tts: boolean }> {
+export async function voiceStatus(): Promise<{ live: boolean; provider: "gemini" | "rules"; tts: boolean }> {
   try {
     return await (await fetch(`${API}/api/voice/status`)).json();
   } catch {
-    return { provider: "rules", tts: false };
+    return { live: false, provider: "rules", tts: false };
   }
 }
 
@@ -46,4 +46,14 @@ export async function fetchTts(text: string): Promise<Blob> {
   });
   if (!r.ok) throw new Error(`tts ${r.status}`);
   return r.blob();
+}
+
+export type ToolInfo = { name: string; description: string; params: string[]; status: "real" | "mock" | "placeholder"; example: string; does: string };
+
+export async function fetchTools(): Promise<ToolInfo[]> {
+  try {
+    return await (await fetch(`${API}/api/voice/tools`)).json();
+  } catch {
+    return [];
+  }
 }

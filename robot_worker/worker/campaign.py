@@ -39,8 +39,9 @@ class Config(BaseModel):
     breakSeconds: int = Field(20, ge=0, le=600)
     visionCheck: bool = True
     autoUpload: bool = True
-    autoTrain: bool = True
+    autoTrain: bool = False  # Perceptron allows only 2 successful training jobs per team: train deliberately
     trainSteps: int = Field(1000, ge=100, le=10000)  # API max is 10,000
+    autoClearGripper: bool = True  # clear a follower-gripper-only overload between batches (in range, not hot)
     targets: list[Target]
 
 
@@ -60,6 +61,46 @@ def default_config() -> Config:
             Target(id="coffee", task="pick up the coffee box and place it in the tray", object="coffee box", variations=spot("B", "coffee box")),
         ],
     )
+
+
+def short_reason(text: str) -> str:
+    """One spoken sentence for common faults; the full text stays in the log."""
+    t = text.lower()
+    if "overload" in t and "gripper" in t:
+        return "The gripper overloaded. Grip more gently, clear the fault, then resume."
+    if "overload" in t:
+        return "A motor overloaded. Check nothing is stuck, clear the fault, then resume."
+    if "disk free" in t or "no space left" in t:
+        return "The disk is almost full. Free up space, then resume."
+    if "too old" in t or "read failed" in t:
+        return "A camera lagged. Check its USB cable, then resume."
+    if "missing motor" in t or "not respond" in t:
+        return "A motor isn't answering. Check power, then resume."
+    return "See the log, then resume."
+
+
+def gripper_only_fault() -> bool:
+    """True when the only unhealthy motor on either arm is the follower's gripper reporting an
+    overload (normal after squeezing an object)."""
+    try:
+        health = studio.health()
+    except HTTPException:
+        return False
+    bad = [(arm, m, h) for arm, ms in health.items() if "error" not in ms for m, h in ms.items() if not h["ok"]]
+    return len(bad) == 1 and bad[0][0] == "follower" and bad[0][1] == "gripper" and "Overload" in str(bad[0][2].get("problem"))
+
+
+def auto_clear_gripper() -> str | None:
+    """Clear a follower-gripper-only overload. studio.clear_fault refuses unless the gripper is in
+    its calibrated range and below 65 C (no motion either way). Returns None on success, else why."""
+    if not gripper_only_fault():
+        return "another motor needs attention"
+    try:
+        studio.clear_fault(studio.ClearIn(arm="follower", motor="gripper"))
+    except HTTPException as e:
+        return str(e.detail)
+    time.sleep(0.5)
+    return None if not gripper_only_fault() else "the gripper fault didn't clear"
 
 
 class Campaign:
@@ -102,6 +143,10 @@ class Campaign:
     # ---------- status
 
     def say(self, message: str, state: str | None = None) -> None:
+        from .voice import speak
+
+        if message != "Recording.":  # episode prompts are spoken separately
+            speak(message, interrupt=state in ("paused", "error"))
         with self.lock:
             if state:
                 self.state = state
@@ -175,7 +220,7 @@ class Campaign:
 
     def _run(self) -> None:
         try:
-            self.say("Campaign started.", "preflight")
+            self.say("Starting.", "preflight")
             while not self.stop_flag:
                 if not self._wait_unpaused():
                     break
@@ -204,29 +249,40 @@ class Campaign:
         # 1. Setup prompt + vision check
         self.ready.clear()
         self.skip_check.clear()
-        self.say(f"Next: {n} episodes of {t.object}. Set up: {variation}. Vary it a little each episode. Say ready when the scene is set.", "setup")
+        spoken = variation.split(" Start:")[0].rstrip(". ")  # moves only; the screen shows the full layout
+        self.say(f"Batch {k + 1}: {n} episodes. {spoken}. Set the starting position, then press Ready.", "setup")
         if self.config.visionCheck:
             self._vision_check(t)
         while not self.ready.wait(0.3):
             if self.stop_flag:
                 return
+        # stop() also sets `ready` to wake this wait; it must never be taken as a go-ahead.
+        if self.stop_flag:
+            return
         if self.paused and not self._wait_unpaused():
             return
 
         # 2. Preflight: nothing else running, motors healthy
         if studio.proc.running:
-            return self.pause(f"{studio.proc.kind} is already running. Stop it, then press Start.")
+            return self.pause(f"{studio.proc.kind} is running. Stop it first.")
         try:
             studio.require_ports()
         except HTTPException as e:
-            return self.pause(f"Can't record: {e.detail}")
+            if self.config.autoClearGripper and "follower gripper" in str(e.detail) and auto_clear_gripper() is None:
+                self.history.append({"t": time.time(), "state": self.state, "message": "Gripper fault cleared automatically."})
+                try:
+                    studio.require_ports()
+                except HTTPException as e2:
+                    return self.pause(f"Can't record. {short_reason(str(e2.detail))}")
+            else:
+                return self.pause(f"Can't record. {short_reason(str(e.detail))}")
 
         # 3. Record
         before = studio.episode_count(self.config.repo)
         cmd, _ = studio.record_cmd(studio.RecordIn(
             repo=self.config.repo, task=t.task, episodes=n, episodeSeconds=self.config.episodeSeconds,
             resetSeconds=self.config.resetSeconds, rerun=True, sounds=False))
-        self.say(f"Recording {n} episodes: {t.task}.", "recording")
+        self.say("Recording.", "recording")
         studio.proc.start("record", cmd)
         while studio.proc.running:
             time.sleep(0.5)
@@ -235,16 +291,22 @@ class Campaign:
             self.progress[t.id] = done + gained
             self.batches[t.id] = k + 1
         if studio.proc.stopped_by_user or self.stop_flag:
-            return self.pause(f"Recording stopped. Kept {gained} new episode{'s' if gained != 1 else ''}. Press Start to continue.")
+            return self.pause(f"Stopped. {gained} saved. Say resume to continue.")
         if studio.proc.exit_code not in (0, None):
             reason = next((l for l in reversed([x for _, x in studio.proc.logs]) if "Error" in l or "error" in l), "see the log")
-            return self.pause(f"Recording failed after {gained} episodes: {reason[:160]}. Fix it, then press Start.")
+            if gained >= n:  # every episode saved; the error came while shutting the arm down
+                if self.config.autoClearGripper and "id_=6" in reason and auto_clear_gripper() is None:
+                    self.history.append({"t": time.time(), "state": self.state, "message": "Gripper fault cleared automatically."})
+                else:
+                    return self.pause(f"Batch saved, {self.progress[t.id]} of {t.target}. {short_reason(reason)}")
+            else:
+                return self.pause(f"Recording failed. {gained} saved. {short_reason(reason)}")
 
         # 4. Break
         total = self.progress[t.id]
-        msg = f"Batch done: {t.object} {total} of {t.target}."
+        msg = f"Batch done. {total} of {t.target}."
         if self._next_target() is not None and self.config.breakSeconds:
-            self.say(f"{msg} Take a {self.config.breakSeconds} second break.", "break")
+            self.say(f"{msg} Short break.", "break")
             self._wait(self.config.breakSeconds)
         else:
             self.say(msg)
@@ -270,7 +332,7 @@ class Campaign:
 
         if studio.proc.running:
             return None
-        studio.release_cameras()
+        studio.release_cameras()  # also steps the live view aside
         cam = int(os.getenv("SIDE_CAMERA_INDEX", "0"))
         cap = cv2.VideoCapture(cam)
         try:
@@ -289,7 +351,7 @@ class Campaign:
         return None
 
     def _finish(self) -> None:
-        self.say(f"All targets reached: {sum(self.progress.values())} new episodes recorded.", "uploading" if self.config.autoUpload else "done")
+        self.say(f"All done. {sum(self.progress.values())} episodes. Uploading." if self.config.autoUpload else f"All done. {sum(self.progress.values())} episodes.", "uploading" if self.config.autoUpload else "done")
         if not self.config.autoUpload:
             return self.say("Campaign complete. Upload and train from the Datasets section when ready.", "done")
         if not os.getenv("PERCEPTRON_API_KEY"):

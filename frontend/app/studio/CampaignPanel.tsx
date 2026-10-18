@@ -79,7 +79,10 @@ export default function CampaignPanel({ status, hfUser, onError }: { status: Cam
 
   return (
     <section>
-      <h2>Recording campaign</h2>
+      <div className="row" style={{ justifyContent: "space-between" }}>
+        <h2 style={{ margin: 0 }}>Recording campaign</h2>
+        <a className="primary" href="/studio/record" style={{ padding: "10px 18px", borderRadius: 999, textDecoration: "none" }}>Open simple Record screen →</a>
+      </div>
       <p className="small">
         Set the targets once, then a teammate on the leader arm just follows the spoken prompts. Each batch: set up → camera check → “ready” → record → break. When every target is reached it uploads and starts training. Any fault pauses it; it never retries by itself.
       </p>
@@ -141,7 +144,7 @@ export default function CampaignPanel({ status, hfUser, onError }: { status: Cam
           <div className="row small" style={{ marginTop: 8 }}>
             <label style={{ flexDirection: "row" }}><input type="checkbox" checked={plan.visionCheck} onChange={(e) => upd({ visionCheck: e.target.checked })} /> Camera check before each batch (teach the objects first)</label>
             <label style={{ flexDirection: "row" }}><input type="checkbox" checked={plan.autoUpload} onChange={(e) => upd({ autoUpload: e.target.checked })} /> Auto-upload when done</label>
-            <label style={{ flexDirection: "row" }}><input type="checkbox" checked={plan.autoTrain} onChange={(e) => upd({ autoTrain: e.target.checked })} /> Auto-train after upload</label>
+            <label style={{ flexDirection: "row" }}><input type="checkbox" checked={plan.autoTrain} onChange={(e) => upd({ autoTrain: e.target.checked })} /> Auto-train after upload (uses 1 of the team's 2 training jobs)</label>
           </div>
 
           <table className="table" style={{ marginTop: 12 }}>

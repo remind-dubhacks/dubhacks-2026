@@ -612,6 +612,7 @@ dependencies = [
     { name = "pymongo" },
     { name = "python-dotenv" },
     { name = "uvicorn", extra = ["standard"] },
+    { name = "websockets" },
 ]
 
 [package.dev-dependencies]
@@ -628,6 +629,7 @@ requires-dist = [
     { name = "pymongo", specifier = ">=4.10" },
     { name = "python-dotenv", specifier = ">=1.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.30" },
+    { name = "websockets", specifier = ">=17.2" },
 ]
 
 [package.metadata.requires-dev]

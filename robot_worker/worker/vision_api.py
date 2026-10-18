@@ -33,6 +33,7 @@ def _busy() -> None:
 @router.get("/stream/{index}.mjpg")
 def stream(index: int, fps: float = 8.0):
     _busy()
+    studio.live.release()
 
     def frames():
         gen = studio._preview_gen

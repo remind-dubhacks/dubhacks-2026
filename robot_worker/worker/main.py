@@ -16,6 +16,7 @@ from pydantic import BaseModel
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 from . import campaign, studio, vision_api  # noqa: E402
+from .shuffle_math import allowlist as shuffle_allowlist  # noqa: E402
 from .executors import MockExecutor, PerceptronExecutor, RobotError, ScriptedExecutor, Stopped
 
 logging.basicConfig(level=logging.INFO)
@@ -26,6 +27,8 @@ log = logging.getLogger("robot_worker")
 ALLOWED: dict[tuple[str, str], dict] = {
     ("move_known_object", "tea_box"): {"instruction": "pick up the tea box and place it in the tray", "sequence": "tea"},
     ("move_known_object", "coffee_box"): {"instruction": "pick up the coffee box and place it in the tray", "sequence": "coffee"},
+    # Memory game shuffles: the instruction is exactly what the policy was trained on.
+    **shuffle_allowlist(),
 }
 
 REQUIRE_VERIFICATION = os.getenv("REQUIRE_VERIFICATION", "true").lower() == "true"
@@ -43,6 +46,7 @@ app.add_middleware(
 app.include_router(studio.router)
 app.include_router(vision_api.router)
 app.include_router(campaign.router)
+studio.live.start()  # always-live Rerun camera view (LIVE_VIEW=0 to turn off)
 jobs: dict[str, dict] = {}
 lock = threading.Lock()
 stop_event = threading.Event()
@@ -65,12 +69,16 @@ def run(job_id: str, spec: dict) -> None:
     job.update(status="running", startedAt=now())
     try:
         executor.execute(spec, stop_event)
-        job["status"] = "verifying" if REQUIRE_VERIFICATION else "succeeded"
+        check = getattr(executor, "last_check", None)
+        job["check"] = check
+        # A camera-confirmed shuffle needs no caregiver check; anything unsure still does.
+        confirmed = bool(check) and check.get("verdict") == "ok"
+        job["status"] = "verifying" if REQUIRE_VERIFICATION and not confirmed else "succeeded"
     except Stopped:
         job["status"] = "stopped"
     except RobotError as e:
         log.error("job %s failed: %s", job_id, e)
-        job.update(status="failed", errorCode=e.code)
+        job.update(status="failed", errorCode=e.code, error=str(e), check=getattr(executor, "last_check", None))
     except Exception as e:  # noqa: BLE001
         log.exception("job %s crashed", job_id)
         job.update(status="failed", errorCode="worker_exception", error=str(e))
