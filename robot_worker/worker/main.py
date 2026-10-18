@@ -17,7 +17,7 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 from . import campaign, studio, vision_api  # noqa: E402
 from .shuffle_math import allowlist as shuffle_allowlist  # noqa: E402
-from .executors import MockExecutor, PerceptronExecutor, RobotError, ScriptedExecutor, Stopped
+from .executors import MockExecutor, PerceptronExecutor, ReplayExecutor, RobotError, ScriptedExecutor, Stopped
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("robot_worker")
@@ -33,7 +33,7 @@ ALLOWED: dict[tuple[str, str], dict] = {
 
 REQUIRE_VERIFICATION = os.getenv("REQUIRE_VERIFICATION", "true").lower() == "true"
 MODE = os.getenv("ROBOT_MODE", "mock")
-EXECUTORS = {"mock": MockExecutor, "perceptron": PerceptronExecutor, "scripted": ScriptedExecutor}
+EXECUTORS = {"mock": MockExecutor, "perceptron": PerceptronExecutor, "scripted": ScriptedExecutor, "replay": ReplayExecutor}
 executor = EXECUTORS[MODE]()
 if getattr(getattr(getattr(executor, "robot", None), "robot", None), "cameras", None):
     vision_api.robot_frame = executor.robot.side_frame  # row checks read the camera the robot holds

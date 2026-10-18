@@ -1,6 +1,7 @@
 """Job executors. Both are cancellable via a threading.Event and never retry on their own."""
 
 import os
+from pathlib import Path
 import random
 import threading
 import time
@@ -494,3 +495,87 @@ class ScriptedExecutor:
             self.last_check = {**check, "mode": "scripted", "pickCorrections": getattr(self, "corrections", [])}
             if check["verdict"] == "mismatch":
                 raise RobotError("shuffle_mismatch", f"expected {check['expected']}, saw {check['observed']}")
+
+
+class ReplayExecutor:
+    """Replays the cleanest recorded human demonstration of each shuffle (replays/<shuffle>.npy,
+    picked by scripts: camera-verified start and end, one grasp per move). The arm repeats exactly
+    what the operator did, slowed down, with every frame through the ActionGuard and the hands
+    check. It needs the keyrings where they were during recording (set them with show_slots.py
+    using the recording-median poses). The motion is object-agnostic, so swap_lr replayed on its
+    own result swaps back."""
+
+    mode = "replay"
+    SPEED = float(os.getenv("REPLAY_SPEED", "0.6"))  # 1.0 = as recorded
+    DIR = Path(__file__).resolve().parent.parent / "replays"
+
+    def __init__(self, robot=None) -> None:
+        from .robot import SO101
+
+        self.robot = robot or SO101()
+        self.guard = ActionGuard()
+        self.last_check: dict | None = None
+        self.hand_pauses = 0
+
+    def ready(self) -> bool:
+        return self.DIR.exists()
+
+    def say(self, text: str) -> None:
+        from . import voice
+
+        voice.speak(text)
+
+    def trajectory(self, sid: str):
+        import numpy as np
+
+        path = self.DIR / f"{sid}.npy"
+        if not path.exists():
+            raise RobotError("replay_missing", f"no recorded trajectory for {sid}")
+        traj = np.load(path)
+        if self.SPEED >= 0.999:
+            return traj.tolist()
+        # Slow down by resampling in time (linear between recorded frames).
+        n = len(traj)
+        t_new = np.arange(0, n - 1, self.SPEED)
+        return [list(traj[int(t)] + (traj[min(int(t) + 1, n - 1)] - traj[int(t)]) * (t - int(t))) for t in t_new]
+
+    def execute(self, spec: dict, stop: threading.Event) -> None:
+        from .robot import JOINTS
+
+        sid = spec.get("shuffle")
+        if not sid:
+            raise RobotError("replay_needs_shuffle", "replay mode only runs shuffles")
+        self.last_check, self.hand_pauses = None, 0
+        traj = self.trajectory(sid)
+        wait_for_clear_table(self.robot, stop, self.say)
+        # Go to where the recording starts, slowly, then play it.
+        self.robot.move_to(dict(zip(JOINTS, traj[0])), stop, 0.4)
+        state = list(traj[0])
+        guard_total = {"chunks": 0, "clampedHard": 0, "clampedEnvelope": 0, "stepLimited": 0}
+        fps = float(os.getenv("CONTROL_FPS", "30"))
+        try:
+            for k in range(0, len(traj), 30):
+                chunk, report = self.guard.check_chunk(state, traj[k:k + 30])
+                guard_total["chunks"] += 1
+                for key in ("clampedHard", "clampedEnvelope", "stepLimited"):
+                    guard_total[key] += report.to_dict()[key]
+                for n, action in enumerate(chunk):
+                    if stop.is_set():
+                        raise Stopped()
+                    if n % HANDS_EVERY == 0 and wait_for_clear_table(self.robot, stop, self.say):
+                        self.hand_pauses += 1  # paused for a hand; the replay resumes where it was
+                    self.robot.act(action)
+                    time.sleep(1 / fps)
+                state = chunk[-1]
+        except GuardError as e:
+            raise RobotError(e.code, str(e)) from e
+        side = None
+        try:
+            _, side, _ = self.robot.observe()
+        except Exception:  # noqa: BLE001
+            pass
+        check = shuffle_check(spec, side) or {}
+        self.last_check = {**check, "mode": "replay", "guard": guard_total, "handPauses": self.hand_pauses,
+                           "frames": len(traj)}
+        if check.get("verdict") == "mismatch":
+            raise RobotError("shuffle_mismatch", f"expected {check['expected']}, saw {check['observed']}")

@@ -751,3 +751,32 @@ def test_pick_correction_knows_the_purple_blocks_offset():
     assert slot_locate.pick_correction(x_of(-13) - 0.05, 1, "purple", ref, pans) == 0.0
     # a keycap seen 0.024 to the right of slot 2's spot = 2 deg toward slot 1
     assert abs(slot_locate.pick_correction(x_of(-1) + 0.024, 2, "white", ref, pans) - (-2.0)) < 1e-6
+
+
+# ---------------------------------------------------------------- replay the recorded demos
+
+
+def test_every_shuffle_has_a_recorded_trajectory_inside_the_guard(limits):
+    ex = executors.ReplayExecutor.__new__(executors.ReplayExecutor)
+    ex.guard = ActionGuard(limits)
+    for sid in SHUFFLES:
+        traj = executors.ReplayExecutor.trajectory(ex, sid)
+        assert len(traj) > 200 and all(len(a) == 6 for a in traj)
+        state = traj[0]
+        for k in range(0, len(traj), 30):
+            _, rep = ex.guard.check_chunk(state, traj[k:k + 30])
+            # only the gripper may touch its soft limit (fully closed at rest reads ~1, limit is 2)
+            assert set(rep.worst) <= {"gripper"} and rep.worst.get("gripper", 0) < 1.5, (sid, rep.worst)
+            state = traj[min(k + 29, len(traj) - 1)]
+
+
+def test_replay_streams_every_frame_and_checks_the_result(limits, monkeypatch):
+    ex = executors.ReplayExecutor.__new__(executors.ReplayExecutor)
+    ex.guard = ActionGuard(limits)
+    ex.robot = FakeArm(middle(limits), png("ep00_end.jpg"))
+    ex.say = lambda t: None
+    ex.last_check, ex.hand_pauses = None, 0
+    monkeypatch.setattr(executors.time, "sleep", lambda s: None)
+    ex.execute({"instruction": "x", "shuffle": "swap_lr"}, executors.threading.Event())
+    assert ex.last_check["mode"] == "replay" and ex.last_check["verdict"] == "ok"
+    assert len(ex.robot.sent) == ex.last_check["frames"]

@@ -1,0 +1,27 @@
+{
+ "swap_lm": {
+  "episode": 47,
+  "frames": 586,
+  "start": 25
+ },
+ "rot_left": {
+  "episode": 54,
+  "frames": 572,
+  "start": 22
+ },
+ "rot_right": {
+  "episode": 36,
+  "frames": 613,
+  "start": 26
+ },
+ "swap_lr": {
+  "episode": 42,
+  "frames": 546,
+  "start": 0
+ },
+ "swap_mr": {
+  "episode": 48,
+  "frames": 522,
+  "start": 21
+ }
+}
