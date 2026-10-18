@@ -65,11 +65,35 @@ class ConsentFlags(BaseModel):
     rememberPreferences: bool = True
 
 
+class CareProfile(BaseModel):
+    """The parts of a nurse's care sheet that change how the companion talks. All of it reaches the model, so no
+    medications, diagnoses or record numbers. `speech` and `pace` also set turn-taking timing (live.pacing)."""
+
+    preferredName: str = ""  # what they like to be called, e.g. "Miss Rose"
+    pronunciation: str = ""
+    language: str = "English"
+    speech: list[Literal["stutter", "aphasia", "word_finding", "soft_voice"]] = []
+    pace: Literal["normal", "slow"] = "normal"
+    hearing: Literal["good", "hard_of_hearing", "hearing_aid"] = "good"
+    vision: str = ""
+    bestTimeOfDay: str = ""
+    attentionMinutes: int | None = None
+    stage: Literal["", "mild", "moderate", "advanced"] = ""
+    orientation: Literal["validation", "gentle_reorientation"] = "validation"
+    calmingStrategies: list[str] = []
+    avoidTopics: list[str] = []
+    distressSigns: list[str] = []
+    lifeStory: list[str] = []  # one fact per line: hometown, work, family (and who has died), pets, faith
+    interests: list[str] = []
+    conversationStarters: list[str] = []
+
+
 class ParticipantIn(BaseModel):
     alias: str
     interestTags: list[str] = []
     communicationPreferences: dict = {}
     consentFlags: ConsentFlags = ConsentFlags()
+    careProfile: CareProfile = CareProfile()
 
 
 class SessionCreate(BaseModel):

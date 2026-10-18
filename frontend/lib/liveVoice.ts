@@ -37,17 +37,19 @@ export class LiveVoice {
   private next = 0;
   constructor(private ev: LiveEvents) {}
 
-  async start() {
+  // params: e.g. { name, games } from the patient setup card; the relay builds its instructions from them.
+  async start(params: Record<string, string> = {}) {
     this.ctx = new AudioContext({ sampleRate: IN_RATE });
     this.stream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 },
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
     });
     const url = URL.createObjectURL(new Blob([WORKLET], { type: "application/javascript" }));
     await this.ctx.audioWorklet.addModule(url);
     const node = new AudioWorkletNode(this.ctx, "pcm");
     this.ctx.createMediaStreamSource(this.stream).connect(node);
 
-    this.ws = new WebSocket(API.replace(/^http/, "ws") + "/api/voice/live");
+    const qs = new URLSearchParams(params).toString();
+    this.ws = new WebSocket(API.replace(/^http/, "ws") + "/api/voice/live" + (qs ? `?${qs}` : ""));
     this.ws.onclose = () => { this.cleanup(); this.ev.onClose(); };
     this.ws.onerror = () => this.ev.onError("Could not connect to the voice backend");
     this.ws.onmessage = (m) => this.handle(JSON.parse(m.data));
@@ -56,6 +58,13 @@ export class LiveVoice {
 
   sendText(text: string) {
     if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ type: "text", text }));
+  }
+
+  // Resolves once queued AI speech has finished playing (polls; speech arrives in chunks).
+  async whenIdle(): Promise<void> {
+    while (this.ctx && this.next > this.ctx.currentTime + 0.05) {
+      await new Promise((r) => setTimeout(r, 200));
+    }
   }
 
   emergencyStop() {

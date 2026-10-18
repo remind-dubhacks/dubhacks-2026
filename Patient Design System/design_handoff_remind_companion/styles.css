@@ -1,0 +1,23 @@
+@import url("https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:wght@400;600&display=swap");
+
+:root {
+  /* Ground — from Figma "Desktop - 1" */
+  --ground-top: rgb(214,232,240);
+  --ground-bottom: rgb(230,239,216);
+  --ground: linear-gradient(180deg, var(--ground-top) 0%, var(--ground-bottom) 100%);
+
+  /* Ink — 11.7:1 on the sky stop, 12.4:1 on the meadow stop */
+  --ink: #1E2B26;
+
+  /* Type */
+  --font: "Atkinson Hyperlegible Next", system-ui, sans-serif;
+  --text-message: 600 64px/1.25 var(--font);
+  --text-caption: 400 40px/1.35 var(--font);
+
+  /* Photo */
+  --photo-radius: 32px;
+  --photo-shadow: 0 24px 60px rgba(30,43,38,0.14);
+
+  /* Motion */
+  --fade: 1200ms ease-in-out;
+}

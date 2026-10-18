@@ -1,0 +1,281 @@
+/* Calm design system (design.md): the gradient, a photo, or a few words. Nothing else.
+   The font stylesheet is linked from CalmStage (an @import here would be dropped once CSS is bundled). */
+
+.calm {
+  --ground-top: rgb(214, 232, 240);
+  --ground-bottom: rgb(230, 239, 216);
+  --ground: linear-gradient(180deg, var(--ground-top) 0%, var(--ground-bottom) 100%);
+  --ink: #1e2b26;
+  --font: "Atkinson Hyperlegible Next", system-ui, sans-serif;
+  --photo-radius: 32px;
+  --photo-shadow: 0 24px 60px rgba(30, 43, 38, 0.14);
+  --fade: 1200ms ease-in-out;
+
+  /* Nurse setup faceplate (design handoff README "Design tokens") */
+  --ink-muted: #4a524d;
+  --ink-label: #2f3833;
+  --ink-disabled: #7a817c;
+  --placeholder: #8a928c;
+  --face: linear-gradient(180deg, #f1f3ee 0%, #e0e4db 100%);
+  --well: linear-gradient(180deg, #c6cbc1 0%, #f5f7f2 100%);
+  --field-well: linear-gradient(180deg, #cdd2c8 0%, #f5f7f2 100%);
+  --field: #f8f9f5;
+  --key-on: linear-gradient(180deg, #5a9a76 0%, #3d7457 100%);
+  --key-off: linear-gradient(180deg, #d9dcd6 0%, #b9beb6 100%);
+  --primary: linear-gradient(180deg, #4c8a68 0%, #2f6248 100%);
+  --icon-off: #5e655f;
+  --grille: #59605b;
+  --power-led: #6ee7a0;
+
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--font);
+  -webkit-font-smoothing: antialiased;
+  cursor: none;
+}
+
+/* Patient view. Every size is bounded by both width and height so nothing is ever cut off,
+   on a landscape TV or a portrait tablet alike. */
+.calm-layer {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: min(4vw, 4dvh);
+  padding: 6dvh 0;
+  opacity: 0;
+  transition: opacity var(--fade);
+}
+.calm-layer.visible { opacity: 1; }
+
+.calm-message {
+  margin: 0;
+  padding: 0 10vw;
+  font-weight: 600;
+  font-size: clamp(28px, min(4.44vw, 8dvh), 96px);
+  line-height: 1.25;
+  text-align: center;
+  text-wrap: balance;
+}
+
+.calm-caption {
+  margin: 0;
+  padding: 0 10vw;
+  font-weight: 400;
+  font-size: clamp(22px, min(2.78vw, 5dvh), 60px);
+  line-height: 1.35;
+  text-align: center;
+  text-wrap: balance;
+}
+
+.calm-photo {
+  display: block;
+  min-height: 0;
+  max-width: 56vw;
+  max-height: 80dvh;
+  object-fit: contain;
+  border-radius: var(--photo-radius);
+  box-shadow: var(--photo-shadow);
+}
+.calm-photo.with-caption {
+  max-width: 46vw;
+  /* Leaves room for up to two caption lines and the gap beneath the photo. */
+  max-height: 56dvh;
+}
+@media (orientation: portrait) {
+  .calm-photo { max-width: 84vw; }
+  .calm-photo.with-caption { max-width: 76vw; }
+}
+
+/* Nurse setup: a small physical device on the gradient (Nurse Setup.dc.html). Not part of the patient view.
+   The faceplate is drawn at 640×~700 design pixels; --u is one design pixel, shrunk so the whole device
+   always fits the viewport. Text has a legibility floor; if a tiny screen hits it, the page scrolls. */
+.calm-setup {
+  --u: min(1px, calc((100dvh - 32px) / 720), calc((100vw - 32px) / 600));
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  display: flex;
+  padding: 16px;
+  background: var(--ground);
+  cursor: auto;
+}
+.calm-setup .face {
+  width: 100%;
+  max-width: calc(640 * var(--u));
+  margin: auto;
+  padding: calc(40 * var(--u)) calc(44 * var(--u)) calc(32 * var(--u));
+  border-radius: calc(36 * var(--u));
+  background: var(--face);
+  box-shadow: inset 0 1px 0 #fff, inset 0 -2px 0 rgba(30, 43, 38, 0.06), 0 2px 4px rgba(30, 43, 38, 0.12), 0 30px 60px rgba(30, 43, 38, 0.16);
+  display: flex;
+  flex-direction: column;
+  gap: calc(28 * var(--u));
+  color: var(--ink);
+  font-family: var(--font);
+}
+.calm-setup p { margin: 0; }
+.calm-setup button { min-height: 0; padding: 0; border: none; font-family: inherit; cursor: pointer; }
+.calm-setup :focus-visible { outline: 4px solid #2f6248; outline-offset: 3px; }
+
+.face-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.face-head h1 {
+  margin: 0;
+  font-size: max(22px, calc(32 * var(--u)));
+  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+.face-lights { display: flex; align-items: center; gap: 18px; flex-shrink: 0; }
+.grille { display: grid; grid-template-columns: repeat(3, 6px); gap: 5px; }
+.grille span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--grille);
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.6), 0 1px 0 #fff;
+}
+.led {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--power-led);
+  box-shadow: 0 0 10px rgba(110, 231, 160, 0.9), 0 0 2px rgba(110, 231, 160, 1);
+}
+
+.calm-setup .field {
+  display: flex;
+  flex-direction: column;
+  gap: calc(10 * var(--u));
+  font-size: max(15px, calc(18 * var(--u)));
+  line-height: 1.3;
+  color: var(--ink-muted);
+}
+.field-well { padding: calc(5 * var(--u)); border-radius: calc(18 * var(--u)); background: var(--field-well); }
+.calm-setup .field-well :is(input, select) {
+  width: 100%;
+  height: max(44px, calc(60 * var(--u)));
+  padding: 0 calc(20 * var(--u));
+  border: none;
+  outline: none;
+  border-radius: calc(14 * var(--u));
+  background: var(--field);
+  font-family: inherit;
+  font-size: max(18px, calc(26 * var(--u)));
+  color: var(--ink);
+  box-shadow: inset 0 2px 5px rgba(30, 43, 38, 0.22), inset 0 0 0 1px rgba(30, 43, 38, 0.08);
+}
+.calm-setup .field-well select { appearance: auto; cursor: pointer; }
+.calm-setup .field-well :is(input, select):focus-visible { outline: 4px solid #2f6248; outline-offset: 3px; }
+.calm-setup .field-well input::placeholder { color: var(--placeholder); }
+.calm-setup .field-note { font-size: max(14px, calc(16 * var(--u))); color: var(--ink-muted); }
+
+.tray {
+  padding: calc(6 * var(--u));
+  border-radius: calc(24 * var(--u));
+  background: var(--well);
+  box-shadow: inset 0 1px 2px rgba(30, 43, 38, 0.2);
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: calc(6 * var(--u));
+}
+.calm-setup .key {
+  height: max(56px, calc(104 * var(--u)));
+  border-radius: calc(18 * var(--u));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--icon-off);
+  background: var(--key-off);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8), inset 0 -2px 0 rgba(0, 0, 0, 0.1), 0 2px 3px rgba(30, 43, 38, 0.3);
+}
+.calm-setup .key svg { width: max(28px, calc(44 * var(--u))); height: auto; }
+.calm-setup .key[aria-pressed="true"] {
+  color: #fff;
+  background: var(--key-on);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), inset 0 -3px 0 rgba(0, 0, 0, 0.15), 0 2px 4px rgba(30, 43, 38, 0.3);
+}
+.calm-setup .key:disabled { opacity: 0.45; cursor: not-allowed; }
+.key-labels {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: calc(6 * var(--u));
+  padding: 0 calc(6 * var(--u));
+}
+.key-labels span {
+  font-size: max(13px, calc(17 * var(--u)));
+  line-height: 1.25;
+  text-align: center;
+  color: var(--ink-label);
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+}
+.key-labels span.disabled { color: var(--ink-disabled); }
+
+.start-well {
+  padding: calc(6 * var(--u));
+  border-radius: calc(26 * var(--u));
+  background: var(--well);
+  box-shadow: inset 0 1px 2px rgba(30, 43, 38, 0.2);
+}
+.calm-setup .start {
+  width: 100%;
+  min-height: 0;
+  margin: 0;
+  height: max(48px, calc(80 * var(--u)));
+  border-radius: calc(20 * var(--u));
+  font-size: max(20px, calc(30 * var(--u)));
+  font-weight: 600;
+  color: #fff;
+  text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.25);
+  background: var(--primary);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), inset 0 -3px 0 rgba(0, 0, 0, 0.18), 0 3px 6px rgba(30, 43, 38, 0.35);
+}
+.calm-setup .start:active:not(:disabled) {
+  transform: translateY(2px);
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(30, 43, 38, 0.3);
+}
+.calm-setup .start:disabled { opacity: 0.55; cursor: not-allowed; }
+.calm-setup .start.secondary {
+  color: var(--ink-label);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.6);
+  background: var(--key-off);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8), inset 0 -2px 0 rgba(0, 0, 0, 0.1), 0 2px 3px rgba(30, 43, 38, 0.3);
+}
+
+.calm-setup .status { font-size: max(18px, calc(26 * var(--u))); line-height: 1.35; color: var(--ink); }
+.calm-setup .helper {
+  margin-top: calc(-8 * var(--u));
+  font-size: max(14px, calc(17 * var(--u)));
+  line-height: 1.45;
+  color: var(--ink-muted);
+  text-align: center;
+  text-wrap: balance;
+}
+.calm-setup .error { font-size: max(15px, calc(18 * var(--u))); line-height: 1.35; color: var(--stop); }
+
+/* Short landscape screens (a phone on its side): put the games beside the name and Start
+   instead of stacking everything, so the device stays wide and readable rather than tiny. */
+@media (orientation: landscape) and (max-height: 540px) {
+  .calm-setup { --u: min(1px, calc((100dvh - 32px) / 440), calc((100vw - 32px) / 1000)); }
+  .calm-setup .face {
+    max-width: calc(1000 * var(--u));
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+    grid-auto-flow: dense;
+    column-gap: calc(36 * var(--u));
+    row-gap: calc(20 * var(--u));
+    align-items: start;
+  }
+  .calm-setup .face > :is(.face-head, .helper, .status, .error) { grid-column: 1 / -1; }
+  .calm-setup .face > .field:has(.tray) { grid-column: 2; grid-row: 2 / span 2; }
+  .calm-setup .face > :is(label.field, .start-well) { grid-column: 1; }
+  .calm-setup .key { height: max(48px, calc(92 * var(--u))); }
+  .calm-setup .helper { margin-top: 0; }
+}
