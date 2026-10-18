@@ -2,6 +2,8 @@
 
 Robot chạy **theo kịch bản** (vị trí đã dạy, camera kiểm tra), không dùng mô hình AI. Hãy nói rõ điều này khi demo. Đã kiểm chứng trên cánh tay (18/10, 05:00): **swap_lr** và **swap_lm**, cả hai chiều, camera xác nhận.
 
+**Quy tắc quan trọng nhất:** chỉ đặt bàn bằng `scripts/show_slots.py` (robot chỉ chỗ), không bao giờ đặt bằng tay. Đặt bằng tay thì móc khóa lệch cả xa–gần, robot không bù được, và gần như lần nào cũng hụt.
+
 ## Trước khi demo (5 phút)
 
 1. **Đặt bàn:** đen · trắng · tím ở ô 1–3, ô 4 trống. Đừng đặt bằng tay theo trí nhớ: chạy `uv run python scripts/show_slots.py` (worker tắt) để móc khóa nằm đúng chỗ robot gắp, rồi bật worker và chạy lệnh hiệu chỉnh camera ở mục "Khi có sự cố".
@@ -54,5 +56,7 @@ Mỗi lần chạy mất khoảng 1–2 phút. Sau khi chạy, script in **RESUL
 
 ## Chưa ổn định (đừng demo)
 
-- **swap_mr, rot_left, rot_right:** đều dùng ô 4 làm chỗ đậu tạm, và robot hay gắp hụt ở ô 4 (camera không nhìn thấy ô 4). Đang sửa.
+- **Ô 4 (chỗ đậu tạm) là điểm yếu.** Mọi kiểu đổi chỗ đều đặt một móc khóa ở ô 4 rồi gắp lại, nhưng camera không nhìn thấy ô 4. Với bộ vị trí tốt nhất (đang dùng), lần gắp lại ở ô 4 thành công **5/7**. Các biến thể khác (dạy lại kẹp thẳng, vị trí trung vị từ dữ liệu, kẹp mở rộng 55%) đều kém hơn. Khi gắp hụt, robot dừng an toàn và báo `grasp_missed`.
+- **swap_mr, rot_left, rot_right:** chưa có lượt nào chạy trọn vẹn (đều vướng ô 4).
+- **Cách tốt nhất tiếp theo:** dời camera bên hông để thấy cả ô 4, rồi bật chỉnh góc bằng camera cho ô 4 như ô 1–3.
 - **Mô hình AI (v1, v2, mỗi cái 1000 bước):** cánh tay di chuyển êm và an toàn (không lệnh nào vượt giới hạn khớp), nhưng chưa gắp được. v2 còn **gạt móc khóa lệch khỏi chỗ** (thử lúc 06:00). Vì vậy chế độ kết hợp (AI thử trước, kịch bản hoàn thành; `HYBRID_SCRIPTED=1` với `ROBOT_MODE=perceptron`) đang **tắt**: sau khi AI thử, kịch bản không gắp được nữa. Cần huấn luyện lâu hơn (10.000 bước) và thêm dữ liệu. Để giới hạn robot chỉ chạy 2 kiểu đã kiểm chứng, đặt `ROBOT_SHUFFLES=swap_lr,swap_lm` trong `robot_worker/.env` rồi khởi động lại worker.
