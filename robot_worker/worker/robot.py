@@ -88,7 +88,14 @@ class SO101:
         import cv2
 
         cam = self.robot.cameras.get("side")
-        return cv2.cvtColor(cam.async_read(), cv2.COLOR_RGB2BGR) if cam is not None else None
+        if cam is None:
+            return None
+        for _ in range(4):  # the USB camera occasionally misses its 200 ms frame deadline
+            try:
+                return cv2.cvtColor(cam.async_read(), cv2.COLOR_RGB2BGR)
+            except Exception:  # noqa: BLE001
+                time.sleep(0.05)
+        return None
 
     def act(self, action: list[float]) -> None:
         self.robot.send_action(dict(zip(JOINTS, action)))
