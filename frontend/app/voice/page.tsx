@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { LiveVoice } from "@/lib/liveVoice";
-import { fetchTts, voiceReset, voiceStatus, voiceTurn, type ToolCall, type VoiceState } from "@/lib/voice";
+import { fetchTools, fetchTts, voiceReset, voiceStatus, voiceTurn, type ToolCall, type ToolInfo, type VoiceState } from "@/lib/voice";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const SR: any = typeof window !== "undefined" ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition : null;
@@ -20,6 +20,8 @@ export default function Voice() {
   const [state, setState] = useState<VoiceState | null>(null);
   const [calls, setCalls] = useState<ToolCall[]>([]);
   const [typed, setTyped] = useState("");
+  const [tools, setTools] = useState<ToolInfo[]>([]);
+  const [showTools, setShowTools] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [hasSR, setHasSR] = useState(true);
@@ -43,6 +45,7 @@ export default function Voice() {
   useEffect(() => {
     try { const m = localStorage.getItem("remind.mode"); if (m === "chat" || m === "voice") { setMode(m); modeRef.current = m; } } catch { /* ignore */ }
   }, []);
+  useEffect(() => { fetchTools().then(setTools); }, []);
   useEffect(() => {
     voiceStatus().then((st) => { setLiveOk(st.live); setProvider(st.provider); setTts(st.tts); ttsRef.current = st.tts; });
   }, []);
@@ -190,10 +193,34 @@ export default function Voice() {
   return (
     <main className="play voice">
       <h1>ReMind</h1>
+      <div className="row" style={{ justifyContent: "space-between" }}>
       <div className="seg" role="tablist" aria-label="Mode">
         <button role="tab" aria-selected={mode === "voice"} className={mode === "voice" ? "active" : ""} onClick={() => switchMode("voice")}>🎙️ Voice</button>
         <button role="tab" aria-selected={mode === "chat"} className={mode === "chat" ? "active" : ""} onClick={() => switchMode("chat")}>💬 Chat</button>
       </div>
+      <button className="toolsbtn" onClick={() => setShowTools((v) => !v)} aria-expanded={showTools}>🔧 Tools ({tools.length})</button>
+      </div>
+      {showTools && (
+        <section className="card toolmenu" aria-label="Available tools">
+          <p className="small">What the assistant can do. It picks these by itself from what you say.</p>
+          {tools.map((t) => {
+            const recent = calls.some((c) => c.name === t.name);
+            return (
+              <div key={t.name} className={`tool-item ${recent ? "recent" : ""}`}>
+                <div className="row">
+                  <code>{t.name}{t.params.length ? `(${t.params.join(", ")})` : "()"}</code>
+                  <span className={`badge st-${t.status}`}>{t.status}</span>
+                  {recent && <span className="badge on">just used</span>}
+                </div>
+                <p className="small" style={{ margin: "4px 0" }}>{t.does}</p>
+                <button className="linkbtn" onClick={() => { setShowTools(false); if (mode === "chat" || started) send(t.example); else setTyped(t.example); }}>
+                  Try: “{t.example}”
+                </button>
+              </div>
+            );
+          })}
+        </section>
+      )}
       {mode === "voice" && <p className="small">{liveOk ? "Live mode: Gemini Live, always listening, you can interrupt" : hasSR ? `Brain: ${provider === "gemini" ? "Gemini" : "keyword rules (set GEMINI_API_KEY)"} · Voice: ${tts ? "ElevenLabs" : "browser (set ELEVENLABS_API_KEY)"}` : "This browser has no speech recognition (use Chrome); try Chat mode."}</p>}
       {mode === "chat" && (
         <p className="small">Type to talk to ReMind. <label><input type="checkbox" checked={readAloud} onChange={(e) => { setReadAloud(e.target.checked); readAllowed.current = e.target.checked; }} /> Read replies aloud</label></p>

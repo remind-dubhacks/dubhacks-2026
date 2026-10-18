@@ -4,7 +4,7 @@ from pydantic import BaseModel
 
 from ..config import settings
 from . import agent, live
-from .tools import GAMES, GameState
+from .tools import GAMES, GameState, tool_catalog
 
 router = APIRouter(prefix="/api/voice", tags=["voice"])
 
@@ -32,6 +32,11 @@ async def voice_turn(body: TurnIn) -> dict:
 async def reset(body: dict) -> dict:
     SESSIONS.pop(str(body.get("sessionId", "")), None)
     return {"ok": True}
+
+
+@router.get("/tools")
+async def tools() -> list[dict]:
+    return tool_catalog()
 
 
 @router.get("/games")
