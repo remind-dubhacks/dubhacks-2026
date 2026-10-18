@@ -286,7 +286,10 @@ def _robot_task(state: GameState, sid: str, purpose: str) -> None:
         state.robot = {"status": "done" if ok else "failed", "purpose": purpose, "shuffle": sid,
                        "check": job.get("check"), "error": job.get("errorCode")}
         if not ok:
-            state.alerts.append(f"Robot {purpose} failed ({job.get('errorCode')}). Please help with the objects.")
+            msg = f"The robot arm needs help during Remember the Order ({purpose}: {job.get('errorCode')}). Please sort the objects."
+            state.alerts.append(msg)
+            state.help_requested = True
+            _bg(send_alert("needs_staff", state.session_id, msg, to=state.caregiver_phone, patient=state.patient_name))
             state.pending_say.append("The robot needs a little help. A caregiver will come and sort the objects with us.")
             return
         if purpose == "shuffle":

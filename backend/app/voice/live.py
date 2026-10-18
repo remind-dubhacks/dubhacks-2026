@@ -27,7 +27,7 @@ from ..tasks import background
 from . import memory
 from .agent import GEMINI_DECLS, STOP_RE
 from .prompts.voice_system_prompt import VOICE_SYSTEM_PROMPT, render_profile
-from .tools import GAMES, TOOL_SCHEMAS, GameState, run_tool
+from .tools import GAMES, TOOL_SCHEMAS, GameState, run_tool, watch_table
 from .upstreams import BackboardUpstream, GeminiUpstream, context_message
 
 log = logging.getLogger("remind.live")
@@ -39,6 +39,8 @@ GOODBYE = "(The person stopped the session. Say a brief, kind goodbye in one sen
 NUDGE = "(It has been quiet for a while. Gently carry on: talk about the item, move to the next one, offer a game, or warmly check in.)"
 NUDGE_AFTER_S = 25.0  # silence before a nudge
 SLOW_NUDGE_AFTER_S = 45.0  # for slow speakers (care profile)
+TABLE_SAY = "(The table camera noticed something. Say exactly this to the person, warmly, and nothing else: {say})"
+TABLE_EVERY_S = 1.2  # how often the table is checked while Remember the Order is waiting for the person
 MAX_NUDGES = 3  # in a row with no reply; then rest the screen and wait for the person
 REMINDER = "Reminder: keep replies to one or two short sentences and respond directly to what the user just said."
 
@@ -297,6 +299,27 @@ async def run(ws: WebSocket) -> None:
                 await tool("note_response", {"engagement": "withdrawn", "note": "No reply to several gentle prompts."})
                 await tool("end_game", {})
 
+    async def table_watcher() -> None:
+        """Remember the Order: follow the table with the robot's camera while the person restores the row,
+        and have the companion speak the cue at the right moment (decided by games/table_watch.py)."""
+        nonlocal last_activity
+        while True:
+            await asyncio.sleep(TABLE_EVERY_S)
+            ex = state.view().get("exercise") or {}
+            if state.game != "order_memory" or not (ex.get("watching") or state.pending_say or (state.robot or {}).get("status") == "moving"):
+                continue
+            try:
+                res = await watch_table(state)
+            except Exception:  # noqa: BLE001 - the camera must never break the call
+                log.exception("table watch failed")
+                continue
+            if res.get("events"):
+                last_activity = time.monotonic()  # the person is busy at the table: don't nudge
+            if res.get("say"):
+                last_activity = time.monotonic()
+                await ws.send_json({"type": "tool", "name": "watch_table", "args": {}, "result": res, "state": state.view()})
+                await up.say(TABLE_SAY.format(say=res["say"]))
+
     async def from_model() -> None:
         nonlocal user_buf, ai_buf, stopped, last_activity, nudges, recent_words, last_reminded_turn
         greeted = False
@@ -336,7 +359,8 @@ async def run(ws: WebSocket) -> None:
             elif ev.kind == "error":
                 await ws.send_json({"type": "error", "message": ev.text})
 
-    tasks = [asyncio.create_task(from_browser()), asyncio.create_task(from_model()), asyncio.create_task(nudger())]
+    tasks = [asyncio.create_task(from_browser()), asyncio.create_task(from_model()), asyncio.create_task(nudger()),
+             asyncio.create_task(table_watcher())]
     try:
         done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
         for d in done:

@@ -340,3 +340,28 @@ def test_watch_without_camera_is_quiet(monkeypatch):
         assert out["say"] is None and out.get("camera") is False
 
     asyncio.run(go())
+
+
+def test_robot_failure_texts_the_caregiver_through_photon(monkeypatch):
+    sent = []
+
+    async def broken(sid):
+        return {"status": "failed", "errorCode": "hands_in_workspace"}
+
+    async def fake_alert(kind, session_id, message, to="", patient=""):
+        sent.append((kind, to, patient, message))
+        return True
+
+    async def go():
+        monkeypatch.setattr(tools, "FR_MOVER", "robot")
+        monkeypatch.setattr(tools, "robot_shuffle", broken)
+        monkeypatch.setattr(tools, "send_alert", fake_alert)
+        state = tools.GameState(patient_name="Rose", caregiver_phone="+15555550100", session_id="s1")
+        await tools.run_tool(state, "start_game", {"game_id": "order_memory"}, None)
+        await tools.run_tool(state, "exercise_step", {"said": "black white purple"}, None)
+        for _ in range(4):
+            await asyncio.sleep(0)
+        assert sent and sent[0][0] == "needs_staff" and sent[0][1] == "+15555550100" and sent[0][2] == "Rose"
+        assert "hands_in_workspace" in sent[0][3] and state.help_requested
+
+    asyncio.run(go())
