@@ -11,7 +11,7 @@ from .config import settings
 
 log = logging.getLogger(__name__)
 
-COLLECTIONS = ["participants", "activities", "sessions", "robot_jobs", "feedback", "messages"]
+COLLECTIONS = ["participants", "activities", "sessions", "robot_jobs", "feedback", "messages", "companion_sessions"]
 
 
 class MemoryStore:

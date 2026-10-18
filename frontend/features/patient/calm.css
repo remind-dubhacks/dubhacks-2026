@@ -1,0 +1,89 @@
+/* Calm design system (design.md): the gradient, a photo, or a few words. Nothing else.
+   The font stylesheet is linked from CalmStage (an @import here would be dropped once CSS is bundled). */
+
+.calm {
+  --ground-top: rgb(255, 144, 54);
+  --ground-bottom: rgb(230, 235, 208);
+  --ground: linear-gradient(180deg, var(--ground-top) 0%, var(--ground-bottom) 100%);
+  --ink: #2a1a0e;
+  --font: "Atkinson Hyperlegible Next", system-ui, sans-serif;
+  --photo-radius: 32px;
+  --photo-shadow: 0 24px 60px rgba(42, 26, 14, 0.18);
+  --fade: 1200ms ease-in-out;
+
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--font);
+  cursor: none;
+}
+
+.calm-layer {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4vw;
+  opacity: 0;
+  transition: opacity var(--fade);
+}
+.calm-layer.visible { opacity: 1; }
+
+.calm-message {
+  margin: 0;
+  padding: 0 10vw;
+  font-weight: 600;
+  font-size: 4.44vw;
+  line-height: 1.25;
+  text-align: center;
+  text-wrap: balance;
+}
+
+.calm-caption {
+  margin: 0;
+  padding: 0 10vw;
+  font-weight: 400;
+  font-size: 2.78vw;
+  line-height: 1.35;
+  text-align: center;
+  text-wrap: balance;
+}
+
+.calm-photo {
+  display: block;
+  max-width: 56vw;
+  max-height: 76vh;
+  border-radius: var(--photo-radius);
+  box-shadow: var(--photo-shadow);
+}
+.calm-photo.with-caption {
+  max-width: 46vw;
+  max-height: 60vh;
+}
+
+/* Nurse setup card: shown before a session and on Esc. Not part of the patient view. */
+.calm-setup {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  cursor: auto;
+}
+.calm-setup .card {
+  width: min(480px, 100%);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: var(--text);
+}
+.calm-setup h1 { font-size: 1.5rem; }
+.calm-setup fieldset { border: 0; padding: 0; margin: 16px 0; display: grid; gap: 8px; }
+.calm-setup legend { font-weight: 600; margin-bottom: 4px; }
+.calm-setup .check { display: flex; gap: 10px; align-items: center; }
+.calm-setup .check input { width: 22px; height: 22px; }
+.calm-setup .actions { display: flex; gap: 12px; margin-top: 16px; }
+.calm-setup .actions button { flex: 1; }
+.calm-setup .error { color: var(--stop); }

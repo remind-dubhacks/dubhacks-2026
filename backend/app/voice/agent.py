@@ -63,7 +63,8 @@ def rule_reply(text: str, calls: list[tuple[str, dict, dict]], state: GameState)
     if name == "alert_caregiver":
         return "That's okay. I've let a caregiver know. They'll be with you soon."
     if name == "list_games":
-        return "I can play the ordering game. More games are coming soon."
+        names = [g["name"].lower() for g in res.get("games", [])]
+        return f"We could play {', '.join(names[:-1])} or {names[-1]}." if len(names) > 1 else "We could play the ordering game."
     return "Okay."
 
 

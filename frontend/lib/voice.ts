@@ -1,8 +1,17 @@
 import { API } from "./api";
 
+// What the patient screen shows (design.md: gradient, a photo, or a few words; nothing else).
+export type Screen =
+  | { kind: "rest" }
+  | { kind: "message"; text: string }
+  | { kind: "photo"; photo: string }
+  | { kind: "photo_caption"; photo: string; caption: string };
+
+export type Observation = { game: string | null; item: string | null; engagement: "engaged" | "some" | "withdrawn"; note: string };
+
 export type VoiceState = {
   game: string | null;
-  phase: "idle" | "awaiting" | "complete" | "reveal" | "stopped";
+  phase: "idle" | "awaiting" | "playing" | "complete" | "reveal" | "stopped";
   attempt: number;
   maxTrials: number;
   target: string[];
@@ -12,6 +21,10 @@ export type VoiceState = {
   result: string;
   helpRequested: boolean;
   alerts: string[];
+  itemIndex: number;
+  screen: Screen;
+  sound: { src: string; id: number } | null;
+  observations: Observation[];
 };
 
 export type ToolCall = { name: string; args: Record<string, unknown>; result: Record<string, unknown> };
@@ -56,4 +69,20 @@ export async function fetchTools(): Promise<ToolInfo[]> {
   } catch {
     return [];
   }
+}
+
+export type CompanionSession = {
+  _id: string;
+  patientName: string;
+  startedAt: string;
+  endedAt: string;
+  gamesPlayed: string[];
+  observations: Observation[];
+  alerts: string[];
+};
+
+export async function fetchSessions(): Promise<CompanionSession[]> {
+  const r = await fetch(`${API}/api/voice/sessions`);
+  if (!r.ok) throw new Error(`${r.status}`);
+  return r.json();
 }

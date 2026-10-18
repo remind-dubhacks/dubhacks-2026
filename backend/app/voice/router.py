@@ -1,5 +1,5 @@
 import httpx
-from fastapi import APIRouter, HTTPException, Response, WebSocket
+from fastapi import APIRouter, HTTPException, Request, Response, WebSocket
 from pydantic import BaseModel
 
 from ..config import settings
@@ -72,6 +72,13 @@ async def tts(body: TtsIn) -> Response:
     except httpx.HTTPError as e:
         raise HTTPException(502, f"ElevenLabs failed: {e}") from e
     return Response(r.content, media_type="audio/mpeg")
+
+
+@router.get("/sessions")
+async def sessions(request: Request, limit: int = 50) -> list[dict]:
+    """Recent patient-screen sessions (newest first) for the nurse screen."""
+    docs = await request.app.state.store.find("companion_sessions")
+    return sorted(docs, key=lambda d: d["startedAt"], reverse=True)[:limit]
 
 
 @router.websocket("/live")
