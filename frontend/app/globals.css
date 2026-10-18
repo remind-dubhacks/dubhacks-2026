@@ -1545,6 +1545,37 @@ pre.tool { white-space: pre-wrap; word-break: break-word; font-size: 14px; backg
   .station .therapy-resident-select select { width: 100%; max-width: 235px; }
 }
 
+/* Sunny yellow adds warmth as a small brand accent without changing alert severity. */
+.station {
+  --remind-yellow: #f4c542;
+  --remind-yellow-soft: #fff7dd;
+  --remind-yellow-ink: #795d12;
+}
+.station .brand-symbol i:nth-child(4) { background: var(--remind-yellow); }
+.station .nav-item.selected { box-shadow: inset 3px 0 var(--remind-yellow); }
+.station .destination-card.blue {
+  border-top: 2px solid var(--remind-yellow);
+}
+.station .destination-card.blue .destination-icon {
+  background: var(--remind-yellow-soft);
+  color: var(--remind-yellow-ink);
+}
+.station .destination-card.blue .destination-copy em { color: var(--remind-yellow-ink); }
+.station .destination-card.blue .destination-copy em svg { color: #d3a422; }
+.station .sequence-illustration::after {
+  width: 12px;
+  height: 12px;
+  position: absolute;
+  top: 24%;
+  left: calc(50% - 6px);
+  border: 3px solid #fff;
+  border-radius: 50%;
+  background: var(--remind-yellow);
+  box-shadow: 0 2px 8px rgba(121,93,18,.2);
+  content: "";
+}
+.station .sequence-center { border-color: #f2e6bc; }
+
 .voice h1 { margin-bottom: 4px; }
 button.start { width: 100%; min-height: 110px; font-size: 2rem; margin: 16px 0; }
 .live-dot { animation: pulse 1.4s infinite; }
@@ -1619,3 +1650,117 @@ button.huge { font-size: 1.8rem; padding: 22px 48px; min-width: 200px; }
 .st-real { background: #cfe8da; }
 .st-mock { background: #fbe6c2; }
 .st-placeholder { background: #e6e6e6; }
+
+/* Light lavender is the dashboard canvas; soft yellow is reserved for icons. */
+.station {
+  --care-bg: #ffffff;
+  --care-yellow: #fff2b8;
+  background: var(--care-bg);
+}
+.station .station-main { background: #ffffff; }
+.station .dashboard-welcome h1 { font-size: 18px; letter-spacing: -.2px; }
+.station .dashboard-welcome { margin-bottom: 14px; }
+.station .overview-main .destination-card,
+.station .overview-main .patient-card {
+  border-color: #f0e8bd;
+  background: #fff9df;
+  box-shadow: 0 2px 7px rgba(76,48,135,.08);
+}
+.station .overview-main .destination-card {
+  border-color: #f0e8bd;
+  background: #fff9df;
+}
+.station .overview-main .destination-card:hover {
+  border-color: #e9dda5;
+  background: #fff5c9;
+  box-shadow: 0 7px 20px rgba(126,97,22,.13);
+}
+.station .overview-main .destination-icon {
+  background: #dfd0f5;
+  color: #607c91;
+}
+.station .overview-main .destination-card .destination-copy em { color: #607c91; }
+.station .overview-main .patient-card .feed-button { border-color: #f0e8bd; }
+
+/* Swap the saturated purple accent for a softer slate blue that suits both pastels. */
+.station {
+  --care-purple: #607c91;
+  --care-purple-deep: #4e687d;
+  --remind-purple: #607c91;
+}
+.station .brand-symbol {
+  width: 27px;
+  height: 25px;
+  gap: 1px;
+  overflow: hidden;
+  border-radius: 52% 52% 46% 46%;
+}
+.station .brand-symbol i {
+  position: relative;
+  background-image:
+    radial-gradient(ellipse at 34% 35%, transparent 0 20%, rgba(255,255,255,.58) 22% 25%, transparent 27%),
+    radial-gradient(ellipse at 66% 66%, transparent 0 19%, rgba(255,255,255,.46) 21% 24%, transparent 26%);
+}
+.station .brand-symbol i:nth-child(1) { border-radius: 85% 38% 22% 52%; background-color: #7890a5; }
+.station .brand-symbol i:nth-child(2) { border-radius: 38% 85% 52% 22%; background-color: #55b9c0; }
+.station .brand-symbol i:nth-child(3) { border-radius: 52% 22% 85% 38%; background-color: #e88cb0; }
+.station .brand-symbol i:nth-child(4) { border-radius: 22% 52% 38% 85%; background-color: #f0ce5e; }
+.station .brand-light,
+.station .destination-icon,
+.station .destination-copy em,
+.station .dashboard-metric > strong,
+.station .therapy-metric > strong,
+.station .button-text,
+.station .history-tabs button.active { color: #607c91; }
+.station .sidebar { background: linear-gradient(180deg, #728aa0, #5d748b); }
+.station .topbar-action.live-action,
+.station .button-primary { border-color: #607c91; background: #607c91; }
+.station .topbar-action.live-action:hover,
+.station .button-primary:hover { border-color: #4e687d; background: #4e687d; }
+.station .button-text:hover { color: #4e687d; }
+.station .history-tabs button.active:after,
+.station .chart-legend i { background: #607c91; }
+.station .chart-legend .legend-therapy { background: #607c91; }
+.station .quick-live { background: linear-gradient(115deg, #607c91, #829bae); }
+.station .directory-count,
+.station .metric-icon { background: #e2eaf0; color: #536e84; }
+.station .search-box:focus-within { border-color: #9cabb8; box-shadow: 0 0 0 3px rgba(96,124,145,.1); }
+
+/* Slightly deeper accents and text keep the pastel palette easy to scan. */
+.station {
+  --care-purple: #49677f;
+  --care-purple-deep: #3b566c;
+  --remind-purple: #49677f;
+}
+.station .topbar-action.live-action,
+.station .button-primary { border-color: #49677f; background: #49677f; }
+.station .topbar-action.live-action:hover,
+.station .button-primary:hover { border-color: #3b566c; background: #3b566c; }
+.station .brand-light,
+.station .destination-copy em,
+.station .dashboard-metric > strong,
+.station .therapy-metric > strong,
+.station .button-text,
+.station .history-tabs button.active { color: #49677f; }
+.station .history-tabs button.active:after,
+.station .chart-legend i,
+.station .chart-legend .legend-therapy { background: #49677f; }
+.station .sidebar { background: linear-gradient(180deg, #657f96, #506a80); }
+.station .quick-live { background: linear-gradient(115deg, #49677f, #718ba0); }
+.station .overview-main .destination-card,
+.station .overview-main .patient-card {
+  border-color: #e5d88f;
+  background: #fff5cc;
+}
+.station .overview-main .destination-card:hover { border-color: #d4c36e; background: #ffefb3; }
+.station .overview-main .destination-copy small,
+.station .monitoring-section-heading p,
+.station .page-title-row p,
+.station .activity-chart-heading p,
+.station .residents-panel-heading p,
+.station .destination-copy em { color: #5e6977; }
+.station .eyebrow,
+.station .dashboard-metric > small,
+.station .patient-identity > span,
+.station .activity-line time,
+.station .video-footnote { color: #687583; }

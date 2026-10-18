@@ -473,13 +473,7 @@ export default function Home() {
     ];
     return <>
       <div className="page-title-row dashboard-welcome">
-        <div><div className="eyebrow">MONDAY, OCTOBER 17, 2026</div><h1>Good morning, Sarah</h1><p>Your resident care overview.</p></div>
-        <div className="welcome-tools"><span className="facility-status"><i /> 3 of 4 rooms connected</span></div>
-      </div>
-      <div className="overview-stats">
-        <button onClick={() => navigate("Patients")}><span className="stat-icon cyan"><Icon name="users" size={17} /></span><span><strong>04</strong><small>Residents monitored</small></span></button>
-        <button onClick={() => navigate("Alerts")}><span className="stat-icon pink"><Icon name="bell" size={17} /></span><span><strong>{activeAlertCount.toString().padStart(2, "0")}</strong><small>Unresolved alerts</small></span></button>
-        <span className="facility-status"><i /> 3 of 4 rooms connected</span>
+        <div><div className="eyebrow">SUNDAY, OCTOBER 18, 2026</div><h1>Good morning, Sarah</h1><p>Your resident care overview.</p></div>
       </div>
       <section className="primary-destinations" aria-label="Primary destinations">
         {overviewCards.map((card) => <button className={`destination-card ${card.accent}`} key={card.title} onClick={() => navigate(card.view)}><span className="destination-icon"><Icon name={card.icon} size={21} /></span><span className="destination-copy"><strong>{card.title}</strong><small>{card.description}</small><em>{card.count} <Icon name="arrow" size={13} /></em></span></button>)}
@@ -621,7 +615,7 @@ export default function Home() {
           <nav aria-label="Care team navigation">{navItems.map((item) => <button key={item.label} title={sidebarCollapsed ? item.label : undefined} onClick={() => navigate(item.view)} className={`nav-item ${view === item.view || (view === "Patient History" && item.view === "Patients") || (view === "Sequence Game" && item.view === "Therapy Analytics") ? "selected" : ""}`}><Icon name={item.icon} size={18} /><span>{item.label}</span>{item.label === "Alerts" && activeAlertCount > 0 && <span className="nav-count">{activeAlertCount}</span>}</button>)}</nav>
           <div className="sidebar-bottom"><div className="sidebar-secure"><Icon name="shield" size={16} /><span>Secure care-team view</span></div><div className="facility-name"><span className="facility-mark">E</span><span><strong>Evergreen Memory Care</strong><small>West Wing · Care Team</small></span></div><a href="/caregiver" className="sidebar-tool-link">Caregiver controls <Icon name="arrow" size={13} /></a></div>
         </aside>
-        <main className="station-main">
+        <main className={`station-main ${view === "Overview" ? "overview-main" : ""}`}>
           {view === "Overview" && renderOverview()}
           {view === "Live Monitoring" && renderMonitoring()}
           {view === "Patients" && renderDirectory()}
