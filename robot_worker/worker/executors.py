@@ -295,7 +295,10 @@ class ScriptedExecutor:
                 missing = self.missing_poses()
                 if missing:
                     raise RobotError("poses_missing", "teach these poses first: " + ", ".join(missing))
-                run_steps(self.robot, scripted_steps(spec["shuffle"]), load_poses()["poses"], stop, self.SPEED, spec["shuffle"])
+                # Taught poses carry whatever the gripper was doing while teaching; the script opens and
+                # closes the gripper itself, so poses only move the arm joints.
+                poses = {k: {j: v for j, v in p.items() if j != "gripper.pos"} for k, p in load_poses()["poses"].items()}
+                run_steps(self.robot, scripted_steps(spec["shuffle"]), poses, stop, self.SPEED, spec["shuffle"])
             else:
                 run_sequence(self.robot, spec["sequence"], stop)
         except (Stopped, RobotError):
