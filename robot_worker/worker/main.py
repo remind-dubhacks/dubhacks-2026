@@ -10,21 +10,23 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from .executors import MockExecutor, PerceptronExecutor, RobotError, Stopped
+from .executors import MockExecutor, PerceptronExecutor, RobotError, ScriptedExecutor, Stopped
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("robot_worker")
 
 # Defense in depth: the backend validates too, but the worker refuses anything not listed here.
-ALLOWED: dict[tuple[str, str], str] = {
-    ("move_known_object", "tea_box"): "pick up the tea box and place it in the tray",
-    ("move_known_object", "coffee_box"): "pick up the coffee box and place it in the tray",
+# `instruction` is sent to the Perceptron policy; `sequence` names a taught sequence in poses.json.
+ALLOWED: dict[tuple[str, str], dict] = {
+    ("move_known_object", "tea_box"): {"instruction": "pick up the tea box and place it in the tray", "sequence": "tea"},
+    ("move_known_object", "coffee_box"): {"instruction": "pick up the coffee box and place it in the tray", "sequence": "coffee"},
 }
 
 REQUIRE_VERIFICATION = os.getenv("REQUIRE_VERIFICATION", "true").lower() == "true"
 MODE = os.getenv("ROBOT_MODE", "mock")
-executor = PerceptronExecutor() if MODE == "perceptron" else MockExecutor()
+EXECUTORS = {"mock": MockExecutor, "perceptron": PerceptronExecutor, "scripted": ScriptedExecutor}
+executor = EXECUTORS[MODE]()
 
 app = FastAPI(title="ReMind robot worker")
 jobs: dict[str, dict] = {}
@@ -43,12 +45,12 @@ def now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def run(job_id: str, instruction: str) -> None:
+def run(job_id: str, spec: dict) -> None:
     global active_job
     job = jobs[job_id]
     job.update(status="running", startedAt=now())
     try:
-        executor.execute(instruction, stop_event)
+        executor.execute(spec, stop_event)
         job["status"] = "verifying" if REQUIRE_VERIFICATION else "succeeded"
     except Stopped:
         job["status"] = "stopped"
@@ -76,8 +78,8 @@ def health():
 @app.post("/jobs")
 def submit(body: JobIn):
     global active_job
-    instruction = ALLOWED.get((body.actionId, body.objectId))
-    if instruction is None:
+    spec = ALLOWED.get((body.actionId, body.objectId))
+    if spec is None:
         raise HTTPException(422, "action/object not on worker allowlist")
     with lock:
         if active_job is not None:
@@ -85,7 +87,7 @@ def submit(body: JobIn):
         active_job = body.jobId
     stop_event.clear()
     jobs[body.jobId] = {**body.model_dump(), "status": "queued", "errorCode": None, "queuedAt": now()}
-    threading.Thread(target=run, args=(body.jobId, instruction), daemon=True).start()
+    threading.Thread(target=run, args=(body.jobId, spec), daemon=True).start()
     return jobs[body.jobId]
 
 

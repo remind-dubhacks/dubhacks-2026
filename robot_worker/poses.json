@@ -1,0 +1,36 @@
+{
+  "_note": "Placeholder values. Teach real poses on the arm with: uv run python scripts/arm.py teach <name>",
+  "poses": {},
+  "sequences": {
+    "tea": [
+      "home",
+      {"gripper": 60},
+      "above_tea",
+      "grasp_tea",
+      {"gripper": 5},
+      {"wait": 0.5},
+      "above_tea",
+      "above_tray",
+      "release_tray",
+      {"gripper": 60},
+      {"wait": 0.5},
+      "above_tray",
+      "home"
+    ],
+    "coffee": [
+      "home",
+      {"gripper": 60},
+      "above_coffee",
+      "grasp_coffee",
+      {"gripper": 5},
+      {"wait": 0.5},
+      "above_coffee",
+      "above_tray",
+      "release_tray",
+      {"gripper": 60},
+      {"wait": 0.5},
+      "above_tray",
+      "home"
+    ]
+  }
+}

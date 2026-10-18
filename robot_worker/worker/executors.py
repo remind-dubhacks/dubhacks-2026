@@ -6,15 +6,13 @@ import threading
 import time
 import uuid
 
+from .robot import Stopped
+
 
 class RobotError(Exception):
     def __init__(self, code: str, message: str = "") -> None:
         super().__init__(message or code)
         self.code = code
-
-
-class Stopped(Exception):
-    pass
 
 
 class MockExecutor:
@@ -29,7 +27,7 @@ class MockExecutor:
     def ready(self) -> bool:
         return True
 
-    def execute(self, instruction: str, stop: threading.Event) -> None:
+    def execute(self, spec: dict, stop: threading.Event) -> None:
         end = time.monotonic() + self.duration
         while time.monotonic() < end:
             if stop.wait(0.1):
@@ -57,7 +55,8 @@ class PerceptronExecutor:
     def ready(self) -> bool:
         return self.client.deployment().get("status") == "ready"
 
-    def execute(self, instruction: str, stop: threading.Event) -> None:
+    def execute(self, spec: dict, stop: threading.Event) -> None:
+        instruction = spec["instruction"]
         grant = self.client.grant(f"remind-{uuid.uuid4().hex[:12]}", ttl_seconds=600)
         try:
             self.client.create_session(grant, instruction, self.contract_id)
@@ -103,3 +102,30 @@ class PerceptronExecutor:
                 self.client.delete_session(grant)
             except Exception:  # noqa: BLE001
                 pass
+
+
+class ScriptedExecutor:
+    """Replays a taught waypoint sequence from poses.json. A reliable fallback for fixed pickup
+    positions; label it as scripted (not a learned policy) in the demo."""
+
+    mode = "scripted"
+
+    def __init__(self) -> None:
+        from .robot import SO101
+
+        self.robot = SO101(cameras=False)
+
+    def ready(self) -> bool:
+        return True
+
+    def execute(self, spec: dict, stop: threading.Event) -> None:
+        from .robot import run_sequence
+
+        try:
+            run_sequence(self.robot, spec["sequence"], stop)
+        except (Stopped, RobotError):
+            raise
+        except KeyError as e:
+            raise RobotError("sequence_missing", str(e)) from e
+        except Exception as e:  # noqa: BLE001
+            raise RobotError("motion_error", str(e)) from e

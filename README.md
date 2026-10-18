@@ -60,7 +60,7 @@ Backend tests: `cd backend && uv run pytest`
 Stop (button, "stop" in chat, or the caregiver) halts the session and robot. Failures go to `needs_staff`, and a caregiver resumes the session. Set `REQUIRE_VERIFICATION=false` on the worker to skip step 4 when that's appropriate for a demo.
 
 ## Where to plug things in
-- **Real robot:** `robot_worker/worker/robot.py` (LeRobot SO-101 adapter) and `executors.py` (`PerceptronExecutor`). Check the action-chunk format against your deployment's contract.
+- **Real robot:** start with [robot_worker/README.md](robot_worker/README.md) (connect, calibrate, teleop, record, scripted moves). Code lives in `robot_worker/worker/robot.py` (LeRobot SO-101 adapter) and `executors.py` (`PerceptronExecutor`). Check the action-chunk format against your deployment's contract.
 - **Grok Voice:** the TODO in `frontend/app/participant/page.tsx` (mic input), with text replies from `backend/app/agent.py`.
 - **Photon:** the TODO on the `help` intent in `backend/app/main.py`.
 - **Activities / objects:** `backend/app/catalog.py` and `ALLOWED` in `robot_worker/worker/main.py`.
