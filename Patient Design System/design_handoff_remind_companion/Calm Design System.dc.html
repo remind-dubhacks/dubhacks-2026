@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:wght@400;600&amp;display=swap">
+<script src="./image-slot.js"></script>
+<style>
+body{margin:0;background:#F5F7F0;color:#1E2B26;font-family:"Atkinson Hyperlegible Next",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:#1E2B26;text-decoration:underline}
+a:hover{color:#3E6B52}
+</style>
+</helmet>
+<div style="max-width:1200px;margin:0 auto;padding:72px 32px 120px;display:flex;flex-direction:column;gap:96px">
+
+<header style="display:flex;flex-direction:column;gap:20px">
+<div style="font-size:18px;letter-spacing:0.08em;text-transform:uppercase;font-weight:600">Design system</div>
+<h1 style="margin:0;font-size:72px;line-height:1.1;font-weight:600;text-wrap:balance">Calm</h1>
+<p style="margin:0;font-size:24px;line-height:1.5;max-width:720px;text-wrap:pretty">A companion screen for people living with dementia. It shows a soft sky-to-meadow gradient, and sometimes a photo or a few words. Nothing else.</p>
+</header>
+
+<section style="display:flex;flex-direction:column;gap:32px">
+<h2 style="margin:0;font-size:36px;font-weight:600">The three elements</h2>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:24px">
+
+<div style="display:flex;flex-direction:column;gap:16px">
+<div style="aspect-ratio:1/1;border-radius:24px;background:linear-gradient(180deg, rgb(214,232,240) 0%, rgb(230,239,216) 100%);box-shadow:inset 0 0 0 1px rgba(30,43,38,0.08)"></div>
+<div style="font-size:24px;font-weight:600">Ground</div>
+<div style="font-size:18px;line-height:1.5">Vertical gradient, always on. <br>Top rgb(214,232,240) <br>Bottom rgb(230,239,216)</div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:16px">
+<div style="aspect-ratio:1/1;border-radius:24px;background:linear-gradient(180deg, rgb(214,232,240) 0%, rgb(230,239,216) 100%);display:flex;align-items:center;justify-content:center;font-size:120px;font-weight:600;color:#1E2B26">Aa</div>
+<div style="font-size:24px;font-weight:600">Words</div>
+<div style="font-size:18px;line-height:1.5">Atkinson Hyperlegible Next, in ink #1E2B26. Made for low vision: open shapes, no confusable letters. Contrast 11.7:1 at the top, 12.4:1 at the bottom.</div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:16px">
+<div style="aspect-ratio:1/1;border-radius:24px;background:linear-gradient(180deg, rgb(214,232,240) 0%, rgb(230,239,216) 100%);display:flex;align-items:center;justify-content:center">
+<image-slot id="spec-photo" shape="rounded" radius="24" placeholder="Drop a family photo" style="width:62%;height:62%;box-shadow:0 24px 60px rgba(30,43,38,0.14);border-radius:24px"></image-slot>
+</div>
+<div style="font-size:24px;font-weight:600">Photos</div>
+<div style="font-size:18px;line-height:1.5">One at a time, centered. Soft 32px corners and a soft shadow. No frames, captions overlays or controls.</div>
+</div>
+
+</div>
+</section>
+
+<section style="display:flex;flex-direction:column;gap:32px">
+<h2 style="margin:0;font-size:36px;font-weight:600">Type</h2>
+<div style="display:flex;flex-direction:column;gap:40px;border-radius:24px;padding:56px;background:linear-gradient(180deg, rgb(214,232,240) 0%, rgb(230,239,216) 100%)">
+<div style="display:flex;flex-direction:column;gap:12px">
+<div style="font-size:16px;letter-spacing:0.08em;text-transform:uppercase;font-weight:600">Message · 64 / 80 · Semibold</div>
+<div style="font-size:64px;line-height:1.25;font-weight:600;text-wrap:balance">Good morning, Margaret.</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:12px">
+<div style="font-size:16px;letter-spacing:0.08em;text-transform:uppercase;font-weight:600">Caption · 40 / 54 · Regular</div>
+<div style="font-size:40px;line-height:1.35;text-wrap:balance">This is you and Tom at the lake.</div>
+</div>
+</div>
+</section>
+
+<section style="display:flex;flex-direction:column;gap:32px">
+<h2 style="margin:0;font-size:36px;font-weight:600">Screens</h2>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,460px),1fr));gap:40px 24px">
+
+<div style="display:flex;flex-direction:column;gap:14px">
+<div style="aspect-ratio:1440/1024;border-radius:20px;overflow:hidden;background:linear-gradient(180deg, rgb(214,232,240) 0%, rgb(230,239,216) 100%)"></div>
+<div style="font-size:20px"><b>Rest.</b> The default. Most of the day looks like this.</div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:14px">
+<div style="aspect-ratio:1440/1024;border-radius:20px;overflow:hidden;container-type:inline-size;background:linear-gradient(180deg, rgb(214,232,240) 0%, rgb(230,239,216) 100%);display:flex;align-items:center;justify-content:center;padding:0 10cqw;box-sizing:border-box">
+<div style="font-size:4.44cqw;line-height:1.25;font-weight:600;text-align:center;text-wrap:balance">Good morning, Margaret.</div>
+</div>
+<div style="font-size:20px"><b>Message.</b> One short sentence, centered. Twelve words at most.</div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:14px">
+<div style="aspect-ratio:1440/1024;border-radius:20px;overflow:hidden;container-type:inline-size;background:linear-gradient(180deg, rgb(214,232,240) 0%, rgb(230,239,216) 100%);display:flex;align-items:center;justify-content:center">
+<image-slot id="screen-photo" shape="rounded" radius="24" placeholder="Drop a photo" style="width:56cqw;height:40cqw;border-radius:24px;box-shadow:0 24px 60px rgba(30,43,38,0.14)"></image-slot>
+</div>
+<div style="font-size:20px"><b>Photo.</b> A familiar face or place, on its own.</div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:14px">
+<div style="aspect-ratio:1440/1024;border-radius:20px;overflow:hidden;container-type:inline-size;background:linear-gradient(180deg, rgb(214,232,240) 0%, rgb(230,239,216) 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4cqw">
+<image-slot id="screen-photo-caption" shape="rounded" radius="24" placeholder="Drop a photo" style="width:46cqw;height:33cqw;border-radius:24px;box-shadow:0 24px 60px rgba(30,43,38,0.14)"></image-slot>
+<div style="font-size:2.78cqw;line-height:1.35;text-align:center;padding:0 10cqw;text-wrap:balance">This is you and Tom at the lake.</div>
+</div>
+<div style="font-size:20px"><b>Photo with caption.</b> Name the people. Say it as a friend would.</div>
+</div>
+
+</div>
+</section>
+
+<section style="display:flex;flex-direction:column;gap:24px">
+<h2 style="margin:0;font-size:36px;font-weight:600">Rules</h2>
+<ol style="margin:0;padding-left:32px;display:flex;flex-direction:column;gap:14px;font-size:22px;line-height:1.5;max-width:760px">
+<li>Only the gradient, a photo, and words. No buttons, icons, clocks or badges.</li>
+<li>One thing on screen at a time.</li>
+<li>Change slowly. Fade in and out over 1.2 seconds; never slide or flash.</li>
+<li>Write warmly, in the present tense, using names. Never test or correct.</li>
+<li>Text is always ink on the gradient. Never place text over a photo.</li>
+</ol>
+</section>
+
+</div>
+</x-dc>
+</body>
+</html>

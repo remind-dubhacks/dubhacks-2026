@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:wght@400;600&amp;display=swap">
+<style>
+body{margin:0;color:#1E2B26;font-family:"Atkinson Hyperlegible Next",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:#1E2B26}
+a:hover{color:#3E6B52}
+input::placeholder{color:#8A928C}
+</style>
+</helmet>
+<sc-if value="{{ setup }}" hint-placeholder-val="{{ true }}">
+<div style="min-height:100vh;box-sizing:border-box;padding:48px 20px;display:flex;align-items:center;justify-content:center;background:linear-gradient(180deg, rgb(214,232,240) 0%, rgb(230,239,216) 100%)">
+
+<div style="width:100%;max-width:640px;box-sizing:border-box;padding:44px 44px 36px;border-radius:36px;background:linear-gradient(180deg,#F1F3EE 0%,#E0E4DB 100%);box-shadow:inset 0 1px 0 #FFFFFF, inset 0 -2px 0 rgba(30,43,38,0.06), 0 2px 4px rgba(30,43,38,0.12), 0 30px 60px rgba(30,43,38,0.16);display:flex;flex-direction:column;gap:32px">
+
+<div style="display:flex;align-items:center;justify-content:space-between;gap:16px">
+<h1 style="margin:0;font-size:32px;font-weight:600;letter-spacing:-0.01em;text-shadow:0 1px 0 rgba(255,255,255,0.8)">ReMind Companion</h1>
+<div style="display:flex;align-items:center;gap:18px">
+<div style="display:grid;grid-template-columns:repeat(3,6px);gap:5px">
+<span style="width:6px;height:6px;border-radius:50%;background:#59605B;box-shadow:inset 0 1px 1px rgba(0,0,0,0.6), 0 1px 0 #fff"></span><span style="width:6px;height:6px;border-radius:50%;background:#59605B;box-shadow:inset 0 1px 1px rgba(0,0,0,0.6), 0 1px 0 #fff"></span><span style="width:6px;height:6px;border-radius:50%;background:#59605B;box-shadow:inset 0 1px 1px rgba(0,0,0,0.6), 0 1px 0 #fff"></span>
+<span style="width:6px;height:6px;border-radius:50%;background:#59605B;box-shadow:inset 0 1px 1px rgba(0,0,0,0.6), 0 1px 0 #fff"></span><span style="width:6px;height:6px;border-radius:50%;background:#59605B;box-shadow:inset 0 1px 1px rgba(0,0,0,0.6), 0 1px 0 #fff"></span><span style="width:6px;height:6px;border-radius:50%;background:#59605B;box-shadow:inset 0 1px 1px rgba(0,0,0,0.6), 0 1px 0 #fff"></span>
+<span style="width:6px;height:6px;border-radius:50%;background:#59605B;box-shadow:inset 0 1px 1px rgba(0,0,0,0.6), 0 1px 0 #fff"></span><span style="width:6px;height:6px;border-radius:50%;background:#59605B;box-shadow:inset 0 1px 1px rgba(0,0,0,0.6), 0 1px 0 #fff"></span><span style="width:6px;height:6px;border-radius:50%;background:#59605B;box-shadow:inset 0 1px 1px rgba(0,0,0,0.6), 0 1px 0 #fff"></span>
+</div>
+<span style="width:10px;height:10px;border-radius:50%;background:#6EE7A0;box-shadow:0 0 10px rgba(110,231,160,0.9), 0 0 2px rgba(110,231,160,1)"></span>
+</div>
+</div>
+
+<label style="display:flex;flex-direction:column;gap:12px">
+<span style="font-size:18px;color:#4A524D">Patient's first name</span>
+<div style="padding:5px;border-radius:18px;background:linear-gradient(180deg,#CDD2C8 0%,#F5F7F2 100%)">
+<input value="{{ name }}" onChange="{{ onName }}" placeholder="First name" style="width:100%;box-sizing:border-box;height:62px;padding:0 20px;border:none;outline:none;border-radius:14px;background:#F8F9F5;font-family:inherit;font-size:26px;color:#1E2B26;box-shadow:inset 0 2px 5px rgba(30,43,38,0.22), inset 0 0 0 1px rgba(30,43,38,0.08)">
+</div>
+</label>
+
+<div style="display:flex;flex-direction:column;gap:12px">
+<span style="font-size:18px;color:#4A524D">Games</span>
+<div style="padding:6px;border-radius:24px;background:linear-gradient(180deg,#C6CBC1 0%,#F5F7F2 100%);box-shadow:inset 0 1px 2px rgba(30,43,38,0.2);display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px">
+<sc-for list="{{ games }}" as="g" hint-placeholder-count="4">
+<button onClick="{{ g.toggle }}" disabled="{{ g.disabled }}" aria-pressed="{{ g.on }}" style="height:112px;border:none;border-radius:18px;cursor:{{ g.cursor }};opacity:{{ g.opacity }};padding:0;display:flex;align-items:center;justify-content:center;background:{{ g.keyBg }};box-shadow:{{ g.keyShadow }}"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="{{ g.iconColor }}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ g.icon }}"></path></svg></button>
+</sc-for>
+</div>
+<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;padding:0 6px">
+<sc-for list="{{ games }}" as="g" hint-placeholder-count="4">
+<span style="font-size:18px;line-height:1.3;text-align:center;color:{{ g.labelColor }};text-wrap:balance">{{ g.label }}</span>
+</sc-for>
+</div>
+</div>
+
+<div style="padding:6px;border-radius:26px;background:linear-gradient(180deg,#C6CBC1 0%,#F5F7F2 100%);box-shadow:inset 0 1px 2px rgba(30,43,38,0.2)">
+<button onClick="{{ start }}" style="width:100%;height:84px;border:none;border-radius:20px;cursor:pointer;font-family:inherit;font-size:30px;font-weight:600;color:#FFFFFF;text-shadow:0 -1px 0 rgba(0,0,0,0.25);background:linear-gradient(180deg,#4C8A68 0%,#2F6248 100%);box-shadow:inset 0 1px 0 rgba(255,255,255,0.35), inset 0 -3px 0 rgba(0,0,0,0.18), 0 3px 6px rgba(30,43,38,0.35)" style-active="transform:translateY(2px);box-shadow:inset 0 2px 6px rgba(0,0,0,0.3), 0 1px 2px rgba(30,43,38,0.3)">Start</button>
+</div>
+
+<p style="margin:0;font-size:18px;line-height:1.5;color:#4A524D;text-wrap:pretty">After Start, the screen shows only the calm view. Press Esc to come back here.</p>
+
+</div>
+</div>
+</sc-if>
+<sc-if value="{{ calm }}" hint-placeholder-val="{{ false }}">
+<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:0 10vw;box-sizing:border-box;background:linear-gradient(180deg, rgb(214,232,240) 0%, rgb(230,239,216) 100%)">
+<div style="font-size:max(40px,4.44vw);line-height:1.25;font-weight:600;text-align:center;text-wrap:balance">{{ greeting }}</div>
+</div>
+</sc-if>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { name: 'Rose', started: false, on: { faces: true, sayings: true, sounds: true, reorder: false } };
+  list = [['faces','Famous faces',false,'M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18Z M8.5 14.5c1 1.3 2.2 2 3.5 2s2.5-.7 3.5-2 M9 9.5h.01 M15 9.5h.01'],['sayings','Sayings',false,'M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-4.6A8 8 0 1 1 21 12Z'],['sounds','Sounds',false,'M11 5 6 9H3v6h3l5 4V5Z M15.5 8.5a5 5 0 0 1 0 7 M18.5 5.5a9 9 0 0 1 0 13'],['reorder','Reorder (needs the robot)',true,'M7 4v16 M3 8l4-4 4 4 M17 20V4 M13 16l4 4 4-4']];
+  componentDidMount() {
+    this.onKey = e => { if (e.key === 'Escape') this.setState({ started: false }); };
+    window.addEventListener('keydown', this.onKey);
+  }
+  componentWillUnmount() { window.removeEventListener('keydown', this.onKey); }
+  renderVals() {
+    const { on, name, started } = this.state;
+    return {
+      name,
+      setup: !started,
+      calm: started,
+      greeting: `Hello, ${name.trim() || 'friend'}.`,
+      onName: e => this.setState({ name: e.target.value }),
+      start: () => this.setState({ started: true }),
+      games: this.list.map(([k, label, disabled, icon]) => {
+        const o = !disabled && on[k];
+        return {
+          label, on: o, disabled: !!disabled, icon,
+          iconColor: o ? '#FFFFFF' : '#5E655F',
+          cursor: disabled ? 'not-allowed' : 'pointer',
+          opacity: disabled ? 0.45 : 1,
+          labelColor: disabled ? '#7A817C' : '#2F3833',
+          toggle: () => !disabled && this.setState(s => ({ on: { ...s.on, [k]: !s.on[k] } })),
+          keyBg: o ? 'linear-gradient(180deg,#5A9A76 0%,#3D7457 100%)' : 'linear-gradient(180deg,#D9DCD6 0%,#B9BEB6 100%)',
+          keyShadow: o ? 'inset 0 1px 0 rgba(255,255,255,0.3), inset 0 -3px 0 rgba(0,0,0,0.15), 0 2px 4px rgba(30,43,38,0.3)' : 'inset 0 1px 0 rgba(255,255,255,0.8), inset 0 -2px 0 rgba(0,0,0,0.1), 0 2px 3px rgba(30,43,38,0.3)',
+          dishBg: o ? 'radial-gradient(circle at 50% 35%,#4C8A68 0%,#346A4F 100%)' : 'radial-gradient(circle at 50% 30%,#CACEC6 0%,#ACB1A9 100%)',
+          ledBg: o ? '#B8F5CF' : '#7C827D',
+          ledGlow: o ? '0 0 12px rgba(184,245,207,0.9), 0 0 3px rgba(255,255,255,0.9)' : 'inset 0 1px 2px rgba(0,0,0,0.5), 0 1px 0 rgba(255,255,255,0.4)'
+        };
+      })
+    };
+  }
+}
+</script>
+</body>
+</html>
