@@ -21,13 +21,13 @@ from datetime import datetime, timezone
 
 from fastapi import WebSocket
 
-from ..alerts import normalize_phone
+from ..alerts import normalize_phone, send_alert
 from ..config import settings
 from ..tasks import background
 from . import memory
 from .agent import GEMINI_DECLS, STOP_RE
 from .prompts.voice_system_prompt import VOICE_SYSTEM_PROMPT, render_profile
-from .tools import GAMES, TOOL_SCHEMAS, GameState, run_tool, watch_table
+from .tools import GAMES, TOOL_SCHEMAS, GameState, check_motors, run_tool, session_summary, watch_table
 from .upstreams import BackboardUpstream, GeminiUpstream, context_message
 
 log = logging.getLogger("remind.live")
@@ -303,8 +303,13 @@ async def run(ws: WebSocket) -> None:
         """Remember the Order: follow the table with the robot's camera while the person restores the row,
         and have the companion speak the cue at the right moment (decided by games/table_watch.py)."""
         nonlocal last_activity
+        ticks = 0
         while True:
             await asyncio.sleep(TABLE_EVERY_S)
+            ticks += 1
+            if state.game == "order_memory" and ticks % 25 == 0:  # ~every 30 s: motor temperatures
+                if await check_motors(state):
+                    await ws.send_json({"type": "tool", "name": "alert_caregiver", "args": {}, "result": {"ok": True}, "state": state.view()})
             ex = state.view().get("exercise") or {}
             if state.game != "order_memory" or not (ex.get("watching") or state.pending_say or (state.robot or {}).get("status") == "moving"):
                 continue
@@ -373,6 +378,9 @@ async def run(ws: WebSocket) -> None:
         if user_buf.strip():  # cut off mid-turn; the browser may be gone, so just keep it for the digest
             said.append(user_buf.strip())
         await save_record(ws, state, started_at, participant.get("_id"))
+        summary = session_summary(state)
+        if summary and state.caregiver_phone:  # Photon: the caregiver hears how it went without asking
+            background(send_alert("session_summary", state.session_id, summary, to=state.caregiver_phone, patient=state.patient_name))
         background(close_quietly(up))  # Backboard's stop handshake can take a moment; don't hold the handler
         if assistant_id:
             background(if_still_remembering(ws, participant, memory.digest_session(assistant_id, name, said, remembered)))

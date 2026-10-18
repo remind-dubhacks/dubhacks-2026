@@ -76,6 +76,7 @@ class GameState:
     watch: Any = None  # TableWatch while the person restores the row
     robot: dict = field(default_factory=dict)  # {status: moving|done|failed, purpose, error}
     pending_say: list[str] = field(default_factory=list)  # said by the app when a robot move finishes
+    overheat_alerted: bool = False
 
     def view(self) -> dict:
         v = {
@@ -252,15 +253,29 @@ ROBOT_TIMEOUT_S = float(os.getenv("ROBOT_SHUFFLE_TIMEOUT_S", "90"))
 YES_RE = re.compile(r"\b(yes|yeah|yep|please|ok(ay)?|sure|show)\b", re.I)
 
 
-async def robot_shuffle(sid: str) -> dict:
+# What the companion says when the robot reports something mid-move (worker job events).
+ROBOT_EVENT_SAY = {
+    "paused_for_hand": "I'll wait until the table is clear, then carry on.",
+    "resumed": "Thank you. Carrying on now.",
+}
+OVERHEAT_C = float(os.getenv("ROBOT_ALERT_TEMP_C", "60"))
+
+
+async def robot_shuffle(sid: str, on_event=None) -> dict:
     """Run one trained shuffle on the robot worker and wait for it. The worker guards every motion
-    and checks the row with its camera afterwards."""
+    and checks the row with its camera afterwards. `on_event` gets each live job event once."""
     job_id = f"om-{uuid.uuid4().hex[:10]}"
     await robot_client.submit(job_id, "shuffle", sid)
     end = time.monotonic() + ROBOT_TIMEOUT_S
+    seen = 0
     while time.monotonic() < end:
         await asyncio.sleep(0.5)
         job = await robot_client.status(job_id)
+        events = job.get("events") or []
+        if on_event:
+            for e in events[seen:]:
+                on_event(e)
+        seen = len(events)
         if job["status"] not in ("queued", "running"):
             return job
     await robot_client.stop()
@@ -276,10 +291,16 @@ def _robot_task(state: GameState, sid: str, purpose: str) -> None:
     """Run a robot move in the background; the person hears the result through pending_say."""
     state.robot = {"status": "moving", "purpose": purpose, "shuffle": sid}
 
+    def on_event(e: dict) -> None:
+        kind = e.get("kind")
+        state.robot = {**state.robot, "last": kind}
+        if kind in ROBOT_EVENT_SAY:
+            state.pending_say.append(ROBOT_EVENT_SAY[kind])
+
     async def go() -> None:
         om: OrderMemory = state.fr
         try:
-            job = await robot_shuffle(sid)
+            job = await robot_shuffle(sid, on_event=on_event)
         except robot_client.RobotWorkerError as e:
             job = {"status": "failed", "errorCode": "worker_unreachable", "error": str(e)}
         ok = job["status"] in ("succeeded", "verifying")
@@ -302,6 +323,49 @@ def _robot_task(state: GameState, sid: str, purpose: str) -> None:
         state.pending_say.append(step.say)
 
     asyncio.get_running_loop().create_task(go())
+
+
+async def check_motors(state: GameState) -> str | None:
+    """Text the caregiver once per session if a robot motor runs hot (the servos shut down at 65 C)."""
+    if getattr(state, "overheat_alerted", False):
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=5) as c:
+            r = await c.get(f"{settings.robot_worker_url}/studio/health")
+        follower = r.json().get("follower") or {}
+    except Exception:  # noqa: BLE001
+        return None
+    hot = {m: v.get("tempC") for m, v in follower.items() if isinstance(v, dict) and (v.get("tempC") or 0) >= OVERHEAT_C}
+    if not hot:
+        return None
+    state.overheat_alerted = True
+    worst = max(hot, key=hot.get)
+    msg = f"The robot arm is running hot ({worst} at {hot[worst]} C). Please let it rest before more robot games."
+    state.alerts.append(msg)
+    _bg(send_alert("needs_staff", state.session_id, msg, to=state.caregiver_phone, patient=state.patient_name))
+    return msg
+
+
+def session_summary(state: GameState) -> str:
+    """A short, plain end-of-session text for the caregiver: what was done and how it went. Facts only,
+    never a score."""
+    if not state.games_played and not state.observations:
+        return ""
+    names = [GAMES.get(g, {}).get("name", g) for g in dict.fromkeys(state.games_played)]
+    parts = [f"Session ended. Played: {', '.join(names)}." if names else "Session ended."]
+    eng = [o.get("engagement") for o in state.observations]
+    if eng:
+        parts.append(f"Engaged {eng.count('engaged')}, some {eng.count('some')}, withdrawn {eng.count('withdrawn')}.")
+    if isinstance(state.fr, OrderMemory) and state.fr.log:
+        sm = state.fr.summary()
+        parts.append(f"Remember the Order: {sm['rounds']} rows ({sm['restoredAlone']} alone, "
+                     f"{sm['restoredWithChoice']} with a choice, {sm['restoredTogether']} together).")
+    notes = [o["note"] for o in state.observations if o.get("note")]
+    if notes:
+        parts.append(f'Note: "{notes[-1][:120]}"')
+    if state.alerts:
+        parts.append(f"{len(state.alerts)} alert(s) during the session.")
+    return " ".join(parts)
 
 
 async def camera_row() -> dict | None:

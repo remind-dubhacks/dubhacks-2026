@@ -269,7 +269,7 @@ def test_simulated_game_watches_and_finishes_from_the_table(monkeypatch):
 def test_robot_game_shuffles_with_the_robot_then_watches(monkeypatch):
     jobs = []
 
-    async def fake_shuffle(sid):
+    async def fake_shuffle(sid, on_event=None):
         jobs.append(sid)
         return {"status": "succeeded", "check": {"verdict": "ok"}}
 
@@ -309,7 +309,7 @@ def test_robot_game_shuffles_with_the_robot_then_watches(monkeypatch):
 
 
 def test_robot_failure_calls_a_caregiver(monkeypatch):
-    async def broken(sid):
+    async def broken(sid, on_event=None):
         return {"status": "failed", "errorCode": "shuffle_mismatch"}
 
     async def go():
@@ -345,7 +345,7 @@ def test_watch_without_camera_is_quiet(monkeypatch):
 def test_robot_failure_texts_the_caregiver_through_photon(monkeypatch):
     sent = []
 
-    async def broken(sid):
+    async def broken(sid, on_event=None):
         return {"status": "failed", "errorCode": "hands_in_workspace"}
 
     async def fake_alert(kind, session_id, message, to="", patient=""):
@@ -365,3 +365,65 @@ def test_robot_failure_texts_the_caregiver_through_photon(monkeypatch):
         assert "hands_in_workspace" in sent[0][3] and state.help_requested
 
     asyncio.run(go())
+
+
+def test_robot_events_are_spoken_by_the_companion(monkeypatch):
+    async def with_events(sid, on_event=None):
+        on_event({"kind": "moving"})
+        on_event({"kind": "paused_for_hand"})
+        on_event({"kind": "resumed"})
+        return {"status": "succeeded", "check": {"verdict": "ok"}}
+
+    async def go():
+        monkeypatch.setattr(tools, "FR_MOVER", "robot")
+        monkeypatch.setattr(tools, "robot_shuffle", with_events)
+        state = tools.GameState()
+        await tools.run_tool(state, "start_game", {"game_id": "order_memory"}, None)
+        await tools.run_tool(state, "exercise_step", {"said": "black white purple"}, None)
+        for _ in range(4):
+            await asyncio.sleep(0)
+        out = await tools.watch_table(state, None)
+        assert out["say"].startswith("I'll wait until the table is clear")
+        assert "Carrying on" in out["say"] and "All mixed up" in out["say"]
+
+    asyncio.run(go())
+
+
+def test_overheating_arm_texts_the_caregiver_once(monkeypatch):
+    sent = []
+
+    async def fake_alert(kind, session_id, message, to="", patient=""):
+        sent.append(message)
+        return True
+
+    class Resp:
+        def json(self):
+            return {"follower": {"gripper": {"ok": True, "tempC": 62}, "elbow_flex": {"ok": True, "tempC": 50}}}
+
+    class Client:
+        def __init__(self, *a, **k): ...
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): ...
+        async def get(self, url, **k): return Resp()
+
+    async def go():
+        monkeypatch.setattr(tools, "send_alert", fake_alert)
+        monkeypatch.setattr(tools.httpx, "AsyncClient", Client)
+        state = tools.GameState(caregiver_phone="+15555550100", patient_name="Rose")
+        assert "gripper at 62" in await tools.check_motors(state)
+        assert await tools.check_motors(state) is None
+        await asyncio.sleep(0)
+        assert len(sent) == 1
+
+    asyncio.run(go())
+
+
+def test_session_summary_is_plain_facts_without_a_score():
+    om = started()
+    om.live([{"kind": "complete"}])
+    state = tools.GameState(games_played=["order_memory", "faces"], fr=om,
+                            observations=[{"engagement": "engaged", "note": "Talked about her sister."}])
+    text = tools.session_summary(state)
+    assert "Remember the Order: 1 rows (1 alone" in text and "Famous faces" in text and "sister" in text
+    assert "score" not in text.lower() and "%" not in text
+    assert tools.session_summary(tools.GameState()) == ""

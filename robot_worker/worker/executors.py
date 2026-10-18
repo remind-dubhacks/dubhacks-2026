@@ -20,6 +20,19 @@ HANDS_EVERY = int(os.getenv("HANDS_CHECK_EVERY_N_ACTIONS", "6"))  # ~5 checks a 
 HANDS_CLEAR_S = float(os.getenv("HANDS_CLEAR_SECONDS", "1.5"))  # table must stay clear this long
 HANDS_MAX_WAIT_S = float(os.getenv("HANDS_MAX_WAIT_SECONDS", "30"))
 
+# Set by main.run() for each job: receives live events ({"kind": ...}) so the backend can tell the
+# companion what the robot is doing. While a hook is set, the companion does the talking, so the
+# laptop's own voice stays quiet to avoid two voices at once.
+EVENT_HOOK = None
+
+
+def emit(kind: str, **data) -> None:
+    if EVENT_HOOK is not None:
+        try:
+            EVENT_HOOK({"kind": kind, **data, "t": time.time()})
+        except Exception:  # noqa: BLE001 - reporting must never stop the robot logic
+            pass
+
 
 def wait_for_clear_table(robot, stop: threading.Event, say=None) -> bool:
     """If a hand is in the workspace, hold still until the table has been clear for HANDS_CLEAR_S.
@@ -29,7 +42,8 @@ def wait_for_clear_table(robot, stop: threading.Event, say=None) -> bool:
     frame = robot.side_frame()
     if frame is None or not hands_in(frame):
         return False
-    if say:
+    emit("paused_for_hand")
+    if say and EVENT_HOOK is None:
         say("I'll wait while your hand is on the table.")
     start = time.monotonic()
     clear_since = None
@@ -40,9 +54,11 @@ def wait_for_clear_table(robot, stop: threading.Event, say=None) -> bool:
         if frame is not None and not hands_in(frame):
             clear_since = clear_since or time.monotonic()
             if time.monotonic() - clear_since >= HANDS_CLEAR_S:
+                emit("resumed")
                 return True
         else:
             clear_since = None
+    emit("hand_timeout")
     raise RobotError("hands_in_workspace", "a hand stayed in the workspace, so the robot stopped")
 
 
@@ -54,6 +70,7 @@ def shuffle_check(spec: dict, side_png: bytes | None) -> dict | None:
     from . import shuffle_math
 
     expected = shuffle_math.expected_end(spec.get("start") or DEFAULT_START, sid)
+    emit("checking")
     observed, visible = None, 0
     if side_png:
         import cv2
@@ -65,13 +82,15 @@ def shuffle_check(spec: dict, side_png: bytes | None) -> dict | None:
         if frame is not None:
             row = read_row(frame)
             observed, visible = row["order"], row["visible"]
-    return {
+    out = {
         "shuffle": sid,
         "expected": expected,
         "observed": observed,
         "visible": visible,
         "verdict": shuffle_math.verdict(expected, observed),
     }
+    emit("checked", verdict=out["verdict"])
+    return out
 
 
 class RobotError(Exception):

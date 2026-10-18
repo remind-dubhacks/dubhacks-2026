@@ -17,6 +17,7 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 from . import campaign, studio, vision_api  # noqa: E402
 from .shuffle_math import allowlist as shuffle_allowlist  # noqa: E402
+from . import executors  # noqa: E402
 from .executors import MockExecutor, PerceptronExecutor, ReplayExecutor, RobotError, ScriptedExecutor, Stopped
 
 logging.basicConfig(level=logging.INFO)
@@ -71,7 +72,9 @@ def now() -> str:
 def run(job_id: str, spec: dict) -> None:
     global active_job
     job = jobs[job_id]
-    job.update(status="running", startedAt=now())
+    job.update(status="running", startedAt=now(), events=[])
+    executors.EVENT_HOOK = lambda e: job["events"].append(e)
+    executors.emit("moving")
     try:
         executor.execute(spec, stop_event)
         check = getattr(executor, "last_check", None)
@@ -88,6 +91,7 @@ def run(job_id: str, spec: dict) -> None:
         log.exception("job %s crashed", job_id)
         job.update(status="failed", errorCode="worker_exception", error=str(e))
     finally:
+        executors.EVENT_HOOK = None
         job["finishedAt"] = now()
         with lock:
             active_job = None

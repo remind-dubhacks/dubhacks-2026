@@ -780,3 +780,17 @@ def test_replay_streams_every_frame_and_checks_the_result(limits, monkeypatch):
     ex.execute({"instruction": "x", "shuffle": "swap_lr"}, executors.threading.Event())
     assert ex.last_check["mode"] == "replay" and ex.last_check["verdict"] == "ok"
     assert len(ex.robot.sent) == ex.last_check["frames"]
+
+
+def test_hand_pause_is_reported_as_live_events_and_laptop_stays_quiet(limits, monkeypatch):
+    monkeypatch.setattr(executors, "HANDS_CLEAR_S", 0.0)
+    events = []
+    monkeypatch.setattr(executors, "EVENT_HOOK", events.append)
+    ex = make_exec(limits, [[middle(limits)] * 30] * 50, png("ep00_end.jpg"))
+    ex.robot.frames = [TABLE] + [hand_frame()] * 2 + [TABLE] * 3
+    said = []
+    ex.say = said.append
+    ex.execute({"instruction": "x", "shuffle": "swap_lr"}, executors.threading.Event())
+    kinds = [e["kind"] for e in events]
+    assert "paused_for_hand" in kinds and "resumed" in kinds and "checked" in kinds
+    assert said == []  # the companion speaks instead
