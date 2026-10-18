@@ -335,6 +335,7 @@ def make_exec(limits, chunks, side_png, end_grip=35.0, seconds=0.05):
     ex.robot = FakeRobot(middle(limits), side_png, end_grip)
     ex.last_check = None
     ex.hand_pauses = 0
+    ex.stride = None
     ex.say = lambda text: None
     return ex
 
@@ -454,3 +455,13 @@ def test_stop_works_while_waiting_for_a_hand(limits):
     stop.set()
     with pytest.raises(executors.Stopped):
         ex.execute({"instruction": "x"}, stop)
+
+
+def test_only_the_contract_stride_runs_before_predicting_again(limits):
+    ex = make_exec(limits, [[middle(limits)] * 30] * 50, png("ep00_end.jpg"), seconds=0.2)
+    ex.stride = 15
+    calls = []
+    real = ex.client.predict
+    ex.client.predict = lambda *a, **k: (calls.append(1), real(*a, **k))[1]
+    ex.execute({"instruction": "x", "shuffle": "swap_lr"}, executors.threading.Event())
+    assert len(ex.robot.sent) == 15 * len(calls)

@@ -111,7 +111,10 @@ class PerceptronExecutor:
 
         self.client = PerceptronClient(os.environ["PERCEPTRON_API_KEY"], os.environ["PERCEPTRON_DEPLOYMENT_ID"])
         contract = self.client.fetch_contract()
-        self.contract_id = contract.get("contract_id") or contract["id"]
+        self.contract_id = contract.get("contract_id") or contract.get("contract_sha256") or contract["id"]  # live contract has contract_sha256
+        # The contract says how many actions of each chunk to run before predicting again.
+        spec = contract.get("contract") or contract
+        self.stride = int((spec.get("rtc") or {}).get("execution_stride") or 0) or None
         self.fps = float(os.getenv("CONTROL_FPS", "30"))
         self.max_seconds = float(os.getenv("MAX_EPISODE_SECONDS", "25"))
         self.robot = SO101()
@@ -166,6 +169,8 @@ class PerceptronExecutor:
                 chunk = result.get("actions") or result.get("action_chunk") or []
                 if not chunk:
                     raise RobotError("empty_action_chunk", str(result)[:200])
+                if self.stride:
+                    chunk = chunk[: self.stride]
                 try:
                     chunk, report = self.guard.check_chunk(state, chunk)
                 except GuardError as e:
