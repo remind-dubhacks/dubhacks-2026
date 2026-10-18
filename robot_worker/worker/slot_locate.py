@@ -58,7 +58,9 @@ TOL_X = float(os.getenv("SPOT_TOL_X", "0.07"))
 # Off by default: the slots sit at different depths in the side view, so a keyring's image height
 # depends on the slot as well as its shape, and robot-placed keyrings were flagged. 1.0 = no y check.
 TOL_Y = float(os.getenv("SPOT_TOL_Y", "1.0"))
-LOOSER = {"purple": 1.5}
+# The purple block's centre moves with where the gripper held it, even when the robot set it down
+# itself, so it is not spot-checked (pick correction and the grasp check still apply).
+LOOSER = {"purple": float("inf")}
 NAMES_VI = {"black": "đen", "white": "trắng", "purple": "tím"}
 
 
