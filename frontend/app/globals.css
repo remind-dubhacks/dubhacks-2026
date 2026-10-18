@@ -1754,3 +1754,35 @@ button.huge { font-size: 1.8rem; padding: 22px 48px; min-width: 200px; }
 .station .patient-identity > span,
 .station .activity-line time,
 .station .video-footnote { color: #687583; }
+
+/* A small contrast lift for labels, controls, and pastel surfaces. */
+.station {
+  --care-purple: #405b72;
+  --care-purple-deep: #344b60;
+  --remind-purple: #405b72;
+}
+.station .topbar-action.live-action,
+.station .button-primary { border-color: #405b72; background: #405b72; }
+.station .topbar-action.live-action:hover,
+.station .button-primary:hover { border-color: #344b60; background: #344b60; }
+.station .brand-light,
+.station .destination-copy em,
+.station .dashboard-metric > strong,
+.station .therapy-metric > strong,
+.station .button-text,
+.station .history-tabs button.active { color: #405b72; }
+.station .history-tabs button.active:after,
+.station .chart-legend i,
+.station .chart-legend .legend-therapy { background: #405b72; }
+.station .overview-main .destination-card,
+.station .overview-main .patient-card { border-color: #d8c66c; }
+.station .overview-main .destination-copy small,
+.station .monitoring-section-heading p,
+.station .page-title-row p,
+.station .activity-chart-heading p,
+.station .residents-panel-heading p,
+.station .eyebrow,
+.station .dashboard-metric > small,
+.station .patient-identity > span,
+.station .activity-line time,
+.station .video-footnote { color: #536170; }
