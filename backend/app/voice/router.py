@@ -1,10 +1,10 @@
 import httpx
-from fastapi import APIRouter, HTTPException, Response
+from fastapi import APIRouter, HTTPException, Response, WebSocket
 from pydantic import BaseModel
 
 from ..config import settings
-from . import agent
-from .tools import GAMES, GameState
+from . import agent, live
+from .tools import GAMES, GameState, tool_catalog
 
 router = APIRouter(prefix="/api/voice", tags=["voice"])
 
@@ -34,6 +34,11 @@ async def reset(body: dict) -> dict:
     return {"ok": True}
 
 
+@router.get("/tools")
+async def tools() -> list[dict]:
+    return tool_catalog()
+
+
 @router.get("/games")
 async def games() -> list[dict]:
     return [{"id": k, **v} for k, v in GAMES.items()]
@@ -43,7 +48,7 @@ async def games() -> list[dict]:
 async def status() -> dict:
     """Which brain and voice are active, so the UI can show it."""
     provider = agent.provider()
-    return {"provider": provider, "tts": bool(settings.elevenlabs_api_key)}
+    return {"live": live.available(), "provider": provider, "tts": bool(settings.elevenlabs_api_key)}
 
 
 class TtsIn(BaseModel):
@@ -67,3 +72,8 @@ async def tts(body: TtsIn) -> Response:
     except httpx.HTTPError as e:
         raise HTTPException(502, f"ElevenLabs failed: {e}") from e
     return Response(r.content, media_type="audio/mpeg")
+
+
+@router.websocket("/live")
+async def live_ws(websocket: WebSocket) -> None:
+    await live.run(websocket)

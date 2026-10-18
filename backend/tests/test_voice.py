@@ -59,3 +59,9 @@ def test_tts_needs_key(monkeypatch):
     monkeypatch.setattr(agent.settings, "elevenlabs_api_key", "")
     with TestClient(main.app) as c:
         assert c.post("/api/voice/tts", json={"text": "hi"}).status_code == 503
+
+
+def test_tool_catalog():
+    with TestClient(main.app) as c:
+        names = [t["name"] for t in c.get("/api/voice/tools").json()]
+    assert names == ["list_games", "start_game", "check_arrangement", "alert_caregiver", "stop"]

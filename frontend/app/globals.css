@@ -185,3 +185,18 @@ textarea { font: inherit; font-size: 15px; width: 100%; padding: 8px; border-rad
 .rec-buttons { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; margin: 16px 0; }
 button.huge { font-size: 1.8rem; padding: 22px 48px; min-width: 200px; }
 .voice-compact { justify-content: center; margin-top: 8px; }
+
+/* Voice / Chat toggle */
+.seg { display: inline-flex; background: #ece5da; border-radius: 999px; padding: 4px; margin: 8px 0; }
+.seg button { border: 0; background: transparent; min-height: 44px; padding: 8px 22px; border-radius: 999px; font-size: 1.1rem; }
+.seg button.active { background: var(--accent); color: var(--accent-text); }
+
+/* Tools menu */
+.toolsbtn { min-height: 44px; padding: 8px 18px; font-size: 1.05rem; }
+.toolmenu { margin: 8px 0 16px; }
+.tool-item { padding: 10px 0; border-top: 1px solid var(--border); }
+.tool-item:first-of-type { border-top: 0; }
+.tool-item.recent { background: #f1f8f3; }
+.st-real { background: #cfe8da; }
+.st-mock { background: #fbe6c2; }
+.st-placeholder { background: #e6e6e6; }
