@@ -1,0 +1,434 @@
+{
+ "config": {
+  "repo": "remind/remind-shuffle",
+  "batchSize": 4,
+  "episodeSeconds": 35,
+  "resetSeconds": 15,
+  "breakSeconds": 15,
+  "visionCheck": false,
+  "autoUpload": true,
+  "autoTrain": false,
+  "trainSteps": 1000,
+  "autoClearGripper": true,
+  "targets": [
+   {
+    "id": "swap_lr",
+    "task": "swap the left and right objects",
+    "object": "three keyrings",
+    "target": 12,
+    "variations": [
+     "Swap LEFT and RIGHT: black keycap to slot 4, blue Salesforce to slot 1, black keycap to slot 3. Start: slot 1 black keycap, slot 2 white keycap, slot 3 blue Salesforce, slot 4 empty. End: slot 1 blue Salesforce, slot 2 white keycap, slot 3 black keycap, slot 4 empty"
+    ]
+   },
+   {
+    "id": "swap_lm",
+    "task": "swap the left and middle objects",
+    "object": "three keyrings",
+    "target": 12,
+    "variations": [
+     "Swap LEFT and MIDDLE: black keycap to slot 4, white keycap to slot 1, black keycap to slot 2. Start: slot 1 black keycap, slot 2 white keycap, slot 3 blue Salesforce, slot 4 empty. End: slot 1 white keycap, slot 2 black keycap, slot 3 blue Salesforce, slot 4 empty"
+    ]
+   },
+   {
+    "id": "swap_mr",
+    "task": "swap the middle and right objects",
+    "object": "three keyrings",
+    "target": 12,
+    "variations": [
+     "Swap MIDDLE and RIGHT: white keycap to slot 4, blue Salesforce to slot 2, white keycap to slot 3. Start: slot 1 black keycap, slot 2 white keycap, slot 3 blue Salesforce, slot 4 empty. End: slot 1 black keycap, slot 2 blue Salesforce, slot 3 white keycap, slot 4 empty"
+    ]
+   },
+   {
+    "id": "rot_left",
+    "task": "rotate the objects one spot to the left",
+    "object": "three keyrings",
+    "target": 12,
+    "variations": [
+     "Rotate LEFT: black keycap to slot 4, white keycap to slot 1, blue Salesforce to slot 2, black keycap to slot 3. Start: slot 1 black keycap, slot 2 white keycap, slot 3 blue Salesforce, slot 4 empty. End: slot 1 white keycap, slot 2 blue Salesforce, slot 3 black keycap, slot 4 empty"
+    ]
+   },
+   {
+    "id": "rot_right",
+    "task": "rotate the objects one spot to the right",
+    "object": "three keyrings",
+    "target": 12,
+    "variations": [
+     "Rotate RIGHT: blue Salesforce to slot 4, white keycap to slot 3, black keycap to slot 2, blue Salesforce to slot 1. Start: slot 1 black keycap, slot 2 white keycap, slot 3 blue Salesforce, slot 4 empty. End: slot 1 blue Salesforce, slot 2 black keycap, slot 3 white keycap, slot 4 empty"
+    ]
+   }
+  ]
+ },
+ "progress": {
+  "swap_lr": 12,
+  "swap_lm": 12,
+  "swap_mr": 12,
+  "rot_left": 12,
+  "rot_right": 12
+ },
+ "batches": {
+  "swap_lr": 4,
+  "swap_lm": 4,
+  "swap_mr": 3,
+  "rot_left": 3,
+  "rot_right": 3
+ },
+ "history": [
+  {
+   "t": 1792302757.311808,
+   "state": "preflight",
+   "message": "Starting."
+  },
+  {
+   "t": 1792302757.3122602,
+   "state": "setup",
+   "message": "Batch 1: 4 episodes. Swap LEFT and RIGHT: black keycap to slot 4, blue Salesforce to slot 1, black keycap to slot 3. Set the starting position, then press Ready."
+  },
+  {
+   "t": 1792302783.014625,
+   "state": "paused",
+   "message": "Paused by operator. The current batch finishes unless you press Stop."
+  },
+  {
+   "t": 1792302796.922038,
+   "state": "paused",
+   "message": "Paused by operator. The current batch finishes unless you press Stop."
+  },
+  {
+   "t": 1792302812.909564,
+   "state": "paused",
+   "message": "Paused by operator. The current batch finishes unless you press Stop."
+  },
+  {
+   "t": 1792302847.160693,
+   "state": "paused",
+   "message": "Resuming the campaign."
+  },
+  {
+   "t": 1792302859.484711,
+   "state": "recording",
+   "message": "Recording."
+  },
+  {
+   "t": 1792302918.16078,
+   "state": "paused",
+   "message": "Paused by operator. The current batch finishes unless you press Stop."
+  },
+  {
+   "t": 1792302922.994687,
+   "state": "paused",
+   "message": "Stopped. 0 saved. Say resume to continue."
+  },
+  {
+   "t": 1792303062.508427,
+   "state": "paused",
+   "message": "Resuming the campaign."
+  },
+  {
+   "t": 1792303062.7409852,
+   "state": "setup",
+   "message": "Batch 2: 4 episodes. Swap LEFT and RIGHT: black keycap to slot 4, blue Salesforce to slot 1, black keycap to slot 3. Set the starting position, then press Ready."
+  },
+  {
+   "t": 1792303111.82691,
+   "state": "recording",
+   "message": "Recording."
+  },
+  {
+   "t": 1792303315.37772,
+   "state": "paused",
+   "message": "Batch saved, 4 of 12. A motor overloaded. Check nothing is stuck, clear the fault, then resume."
+  },
+  {
+   "t": 1792303368.249265,
+   "state": "paused",
+   "message": "Resuming the campaign."
+  },
+  {
+   "t": 1792303368.376416,
+   "state": "setup",
+   "message": "Batch 1: 4 episodes. Swap LEFT and MIDDLE: black keycap to slot 4, white keycap to slot 1, black keycap to slot 2. Set the starting position, then press Ready."
+  },
+  {
+   "t": 1792303417.1357682,
+   "state": "recording",
+   "message": "Recording."
+  },
+  {
+   "t": 1792303421.527484,
+   "state": "paused",
+   "message": "Paused by operator. The current batch finishes unless you press Stop."
+  },
+  {
+   "t": 1792303423.7183151,
+   "state": "paused",
+   "message": "Stopped. 0 saved. Say resume to continue."
+  },
+  {
+   "t": 1792303462.934114,
+   "state": "preflight",
+   "message": "Starting."
+  },
+  {
+   "t": 1792303462.942406,
+   "state": "setup",
+   "message": "Batch 2: 4 episodes. Swap LEFT and MIDDLE: black keycap to slot 4, white keycap to slot 1, black keycap to slot 2. Set the starting position, then press Ready."
+  },
+  {
+   "t": 1792303512.9337301,
+   "state": "recording",
+   "message": "Recording."
+  },
+  {
+   "t": 1792303717.4966452,
+   "state": "break",
+   "message": "Batch done. 4 of 12. Short break."
+  },
+  {
+   "t": 1792303732.679372,
+   "state": "setup",
+   "message": "Batch 1: 4 episodes. Swap MIDDLE and RIGHT: white keycap to slot 4, blue Salesforce to slot 2, white keycap to slot 3. Set the starting position, then press Ready."
+  },
+  {
+   "t": 1792303749.840176,
+   "state": "recording",
+   "message": "Recording."
+  },
+  {
+   "t": 1792303955.29865,
+   "state": "recording",
+   "message": "Gripper fault cleared automatically."
+  },
+  {
+   "t": 1792303955.298784,
+   "state": "break",
+   "message": "Batch done. 4 of 12. Short break."
+  },
+  {
+   "t": 1792303970.4709399,
+   "state": "setup",
+   "message": "Batch 1: 4 episodes. Rotate LEFT: black keycap to slot 4, white keycap to slot 1, blue Salesforce to slot 2, black keycap to slot 3. Set the starting position, then press Ready."
+  },
+  {
+   "t": 1792303980.040041,
+   "state": "recording",
+   "message": "Recording."
+  },
+  {
+   "t": 1792304186.091887,
+   "state": "recording",
+   "message": "Gripper fault cleared automatically."
+  },
+  {
+   "t": 1792304186.091978,
+   "state": "break",
+   "message": "Batch done. 4 of 12. Short break."
+  },
+  {
+   "t": 1792304201.250714,
+   "state": "setup",
+   "message": "Batch 1: 4 episodes. Rotate RIGHT: blue Salesforce to slot 4, white keycap to slot 3, black keycap to slot 2, blue Salesforce to slot 1. Set the starting position, then press Ready."
+  },
+  {
+   "t": 1792304260.8765519,
+   "state": "recording",
+   "message": "Recording."
+  },
+  {
+   "t": 1792304464.934029,
+   "state": "break",
+   "message": "Batch done. 4 of 12. Short break."
+  },
+  {
+   "t": 1792304480.080927,
+   "state": "setup",
+   "message": "Batch 3: 4 episodes. Swap LEFT and RIGHT: black keycap to slot 4, blue Salesforce to slot 1, black keycap to slot 3. Set the starting position, then press Ready."
+  },
+  {
+   "t": 1792304501.5697532,
+   "state": "recording",
+   "message": "Recording."
+  },
+  {
+   "t": 1792304707.9605901,
+   "state": "recording",
+   "message": "Gripper fault cleared automatically."
+  },
+  {
+   "t": 1792304707.960695,
+   "state": "break",
+   "message": "Batch done. 8 of 12. Short break."
+  },
+  {
+   "t": 1792304723.1342459,
+   "state": "setup",
+   "message": "Batch 3: 4 episodes. Swap LEFT and MIDDLE: black keycap to slot 4, white keycap to slot 1, black keycap to slot 2. Set the starting position, then press Ready."
+  },
+  {
+   "t": 1792304743.139981,
+   "state": "recording",
+   "message": "Recording."
+  },
+  {
+   "t": 1792304952.699239,
+   "state": "recording",
+   "message": "Gripper fault cleared automatically."
+  },
+  {
+   "t": 1792304952.699383,
+   "state": "break",
+   "message": "Batch done. 8 of 12. Short break."
+  },
+  {
+   "t": 1792304967.8608031,
+   "state": "setup",
+   "message": "Batch 2: 4 episodes. Swap MIDDLE and RIGHT: white keycap to slot 4, blue Salesforce to slot 2, white keycap to slot 3. Set the starting position, then press Ready."
+  },
+  {
+   "t": 1792304977.208454,
+   "state": "recording",
+   "message": "Recording."
+  },
+  {
+   "t": 1792305181.362954,
+   "state": "break",
+   "message": "Batch done. 8 of 12. Short break."
+  },
+  {
+   "t": 1792305196.390007,
+   "state": "setup",
+   "message": "Batch 2: 4 episodes. Rotate LEFT: black keycap to slot 4, white keycap to slot 1, blue Salesforce to slot 2, black keycap to slot 3. Set the starting position, then press Ready."
+  },
+  {
+   "t": 1792305300.789004,
+   "state": "recording",
+   "message": "Recording."
+  },
+  {
+   "t": 1792305505.507648,
+   "state": "recording",
+   "message": "Gripper fault cleared automatically."
+  },
+  {
+   "t": 1792305505.507714,
+   "state": "break",
+   "message": "Batch done. 8 of 12. Short break."
+  },
+  {
+   "t": 1792305520.511429,
+   "state": "setup",
+   "message": "Batch 2: 4 episodes. Rotate RIGHT: blue Salesforce to slot 4, white keycap to slot 3, black keycap to slot 2, blue Salesforce to slot 1. Set the starting position, then press Ready."
+  },
+  {
+   "t": 1792305533.381299,
+   "state": "recording",
+   "message": "Recording."
+  },
+  {
+   "t": 1792305739.687762,
+   "state": "recording",
+   "message": "Gripper fault cleared automatically."
+  },
+  {
+   "t": 1792305739.687816,
+   "state": "break",
+   "message": "Batch done. 8 of 12. Short break."
+  },
+  {
+   "t": 1792305754.793304,
+   "state": "setup",
+   "message": "Batch 4: 4 episodes. Swap LEFT and RIGHT: black keycap to slot 4, blue Salesforce to slot 1, black keycap to slot 3. Set the starting position, then press Ready."
+  },
+  {
+   "t": 1792305767.2034922,
+   "state": "recording",
+   "message": "Recording."
+  },
+  {
+   "t": 1792305972.023335,
+   "state": "recording",
+   "message": "Gripper fault cleared automatically."
+  },
+  {
+   "t": 1792305972.023406,
+   "state": "break",
+   "message": "Batch done. 12 of 12. Short break."
+  },
+  {
+   "t": 1792305987.157774,
+   "state": "setup",
+   "message": "Batch 4: 4 episodes. Swap LEFT and MIDDLE: black keycap to slot 4, white keycap to slot 1, black keycap to slot 2. Set the starting position, then press Ready."
+  },
+  {
+   "t": 1792305992.166789,
+   "state": "recording",
+   "message": "Recording."
+  },
+  {
+   "t": 1792306197.4059331,
+   "state": "recording",
+   "message": "Gripper fault cleared automatically."
+  },
+  {
+   "t": 1792306197.406016,
+   "state": "break",
+   "message": "Batch done. 12 of 12. Short break."
+  },
+  {
+   "t": 1792306212.536427,
+   "state": "setup",
+   "message": "Batch 3: 4 episodes. Swap MIDDLE and RIGHT: white keycap to slot 4, blue Salesforce to slot 2, white keycap to slot 3. Set the starting position, then press Ready."
+  },
+  {
+   "t": 1792306220.259051,
+   "state": "recording",
+   "message": "Recording."
+  },
+  {
+   "t": 1792306425.9304068,
+   "state": "recording",
+   "message": "Gripper fault cleared automatically."
+  },
+  {
+   "t": 1792306425.9306738,
+   "state": "break",
+   "message": "Batch done. 12 of 12. Short break."
+  },
+  {
+   "t": 1792306440.980901,
+   "state": "setup",
+   "message": "Batch 3: 4 episodes. Rotate LEFT: black keycap to slot 4, white keycap to slot 1, blue Salesforce to slot 2, black keycap to slot 3. Set the starting position, then press Ready."
+  },
+  {
+   "t": 1792306450.983416,
+   "state": "recording",
+   "message": "Recording."
+  },
+  {
+   "t": 1792306657.473131,
+   "state": "recording",
+   "message": "Gripper fault cleared automatically."
+  },
+  {
+   "t": 1792306657.473194,
+   "state": "break",
+   "message": "Batch done. 12 of 12. Short break."
+  },
+  {
+   "t": 1792306672.661746,
+   "state": "setup",
+   "message": "Batch 3: 4 episodes. Rotate RIGHT: blue Salesforce to slot 4, white keycap to slot 3, black keycap to slot 2, blue Salesforce to slot 1. Set the starting position, then press Ready."
+  },
+  {
+   "t": 1792306678.4570382,
+   "state": "recording",
+   "message": "Recording."
+  },
+  {
+   "t": 1792306884.131506,
+   "state": "paused",
+   "message": "Batch saved, 12 of 12. A motor overloaded. Check nothing is stuck, clear the fault, then resume."
+  }
+ ],
+ "datasetId": null,
+ "jobId": null
+}
